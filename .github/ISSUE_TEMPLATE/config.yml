@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Relatar uma vulnerabilidade
+    url: https://github.com/HollyGM/HollyOptimizer/security/advisories/new
+    about: Envie detalhes de segurança de forma privada.

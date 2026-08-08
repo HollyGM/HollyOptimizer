@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HollyOptimizer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand" aria-label="HollyOptimizer">
+                <img class="brand-wordmark" src="brand-mark.png" alt="">
+                <div class="brand-copy">
+                    <h1 class="brand-name">Holly<span>Optimizer</span></h1>
+                    <span class="brand-tagline">Cuidado inteligente para o Mac</span>
+                </div>
+            </div>
+            
+            <nav class="nav-menu">
+                <button class="nav-btn active" data-target="dashboard-panel" aria-current="page">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+                    <span>Dashboard</span>
+                </button>
+                <button class="nav-btn" data-target="junk-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    <span>Lixo do Sistema</span>
+                </button>
+                <button class="nav-btn" data-target="leftovers-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                    <span>Sobras de Apps</span>
+                </button>
+                <button class="nav-btn" data-target="uninstaller-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14V4zM6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM8 9h8v10H8V9z"/></svg>
+                    <span>Desinstalador</span>
+                </button>
+                <button class="nav-btn" data-target="dependencies-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>
+                    <span>Dependências</span>
+                </button>
+                <button class="nav-btn" data-target="startup-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM13 16h-2v2h2v-2zm0-6h-2v4h2v-4z"/></svg>
+                    <span>Inicialização</span>
+                </button>
+                <button class="nav-btn" data-target="large-files-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-3H6V9h12v4z"/></svg>
+                    <span>Arquivos Grandes</span>
+                </button>
+                <button class="nav-btn" data-target="duplicates-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                    <span>Duplicados</span>
+                </button>
+                <button class="nav-btn" data-target="browser-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2zm6.92 6h-3.1a15.7 15.7 0 0 0-1.44-3.56A8.06 8.06 0 0 1 18.92 8zM12 4c.83 1.2 1.46 2.54 1.86 4h-3.72A13.7 13.7 0 0 1 12 4zM4.26 14a7.8 7.8 0 0 1 0-4h3.4a16.5 16.5 0 0 0 0 4zm.82 2h3.1a15.7 15.7 0 0 0 1.44 3.56A8.06 8.06 0 0 1 5.08 16zM8.18 8h-3.1a8.06 8.06 0 0 1 4.54-3.56A15.7 15.7 0 0 0 8.18 8zM12 20a13.7 13.7 0 0 1-1.86-4h3.72A13.7 13.7 0 0 1 12 20zm2.35-6h-4.7a14.5 14.5 0 0 1 0-4h4.7a14.5 14.5 0 0 1 0 4zm.03 5.56A15.7 15.7 0 0 0 15.82 16h3.1a8.06 8.06 0 0 1-4.54 3.56zM16.34 14a16.5 16.5 0 0 0 0-4h3.4a7.8 7.8 0 0 1 0 4z"/></svg>
+                    <span>Navegadores</span>
+                </button>
+                <button class="nav-btn" data-target="security-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M12 2 4 5v6c0 5.05 3.41 9.76 8 11 4.59-1.24 8-5.95 8-11V5l-8-3zm0 2.18 6 2.25V11c0 3.89-2.46 7.73-6 8.92C8.46 18.73 6 14.89 6 11V6.43l6-2.25zm-1 4.82v2H9v2h2v2h2v-2h2v-2h-2V9h-2z"/></svg>
+                    <span>Segurança</span>
+                </button>
+                <button class="nav-btn" data-target="network-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 19.4c-1.46-1.99-2.35-4.44-2.35-7.1 0-6.63 5.37-12 12-12s12 5.37 12 12c0 2.66-.89 5.11-2.35 7.1l-1.62-1.79C20.26 16.07 21 14.12 21 12c0-4.97-4.03-9-9-9zm-1 8.8c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5zm6.5 0c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5zm-11 0c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5z"/></svg>
+                    <span>Rede e DNS</span>
+                </button>
+                <button class="nav-btn" data-target="memory-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M15 9H9v6h6V9zm-2 4h-2v-2h2v2zm8-2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2H9V3H7v2H5c-1.1 0-2 .9-2 2v2H1v2h2v2H1v2h2v2c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2h2zm-4 6H7V7h10v10z"/></svg>
+                    <span>Memória RAM</span>
+                </button>
+                <button class="nav-btn" data-target="silicon-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M9 3v2H7c-1.1 0-2 .9-2 2v2H3v2h2v2H3v2h2v2c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2h2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2h-2V3H9zm-2 4h10v10H7V7zm2 2v6h6V9H9z"/></svg>
+                    <span>Apple Silicon</span>
+                </button>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <span class="status-indicator online"></span>
+                <span class="footer-text">Ambiente protegido</span>
+            </div>
+        </aside>
+        <main class="main-content">
+            <!-- HEADER -->
+            <header class="app-header">
+                <div class="header-title-group">
+                    <span class="header-eyebrow">HollyOptimizer</span>
+                    <h2 id="current-panel-title">Dashboard</h2>
+                </div>
+                <div class="system-stats">
+                    <button id="btn-empty-trash" class="btn warning btn-sm" style="margin-right:10px;">🗑️ Esvaziar Lixeira</button>
+                    <span id="diagnostic-stat-latency" class="header-badge">Ping: Carregando...</span>
+                </div>
+            </header>
+            
+            <!-- PANEL: DASHBOARD -->
+            <section id="dashboard-panel" class="panel active">
+                <div class="dashboard-grid">
+                    <div class="overview-card glass">
+                        <div class="scanner-circle-container">
+                            <div class="pulse-ring"></div>
+                            <button id="btn-main-scan" class="scan-circle">
+                                <span class="scan-circle-text">VARREDURA</span>
+                                <span class="scan-circle-sub">COMPLETA</span>
+                            </button>
+                        </div>
+                        <h3 id="system-status-msg" class="status-msg">Análise segura do seu Mac</h3>
+                        <p id="system-status-sub" class="status-sub">Clique para iniciar uma varredura completa e reversível.</p>
+                        <div class="disk-usage-container mt-20" style="width: 100%;">
+                            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px;">
+                                <span class="color-muted">Uso do Disco (Macintosh HD)</span>
+                                <span id="dash-disk-text">Carregando...</span>
+                            </div>
+                            <div class="progress-bar-bg" style="height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden;">
+                                <div id="dash-disk-bar" style="height:100%; width:0%; background:var(--accent-gold); transition:width 1s;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="stats-cards">
+                    <div class="stat-card glass hover-effect" data-nav="junk-panel" role="button" tabindex="0">
+                            <span class="stat-icon">🧹</span>
+                            <div class="stat-info">
+                                <span class="stat-label">Lixo do Sistema</span>
+                                <span id="dash-junk-size" class="stat-val">Carregando...</span>
+                            </div>
+                        </div>
+                    <div class="stat-card glass hover-effect" data-nav="leftovers-panel" role="button" tabindex="0">
+                            <span class="stat-icon">🗑️</span>
+                            <div class="stat-info">
+                                <span class="stat-label">Sobras de Apps</span>
+                                <span id="dash-leftovers-count" class="stat-val">Carregando...</span>
+                            </div>
+                        </div>
+                    <div class="stat-card glass hover-effect" data-nav="startup-panel" role="button" tabindex="0">
+                            <span class="stat-icon">🚀</span>
+                            <div class="stat-info">
+                                <span class="stat-label">Itens Inicialização</span>
+                                <span id="dash-startup-count" class="stat-val">Carregando...</span>
+                            </div>
+                        </div>
+                    <div class="stat-card glass hover-effect" data-nav="network-panel" role="button" tabindex="0">
+                            <span class="stat-icon">⚡</span>
+                            <div class="stat-info">
+                                <span class="stat-label">Status da Conexão</span>
+                                <span id="dash-network-status" class="stat-val">Carregando...</span>
+                            </div>
+                        </div>
+                    <div class="stat-card glass hover-effect" data-nav="memory-panel" role="button" tabindex="0">
+                            <span class="stat-icon">💾</span>
+                            <div class="stat-info">
+                                <span class="stat-label">Memória RAM Usada</span>
+                                <span id="dash-ram-use" class="stat-val">Carregando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: JUNK CLEANER -->
+            <section id="junk-panel" class="panel">
+                <div class="panel-header-actions">
+                    <input type="search" id="junk-search" class="search-input" placeholder="Buscar..." style="margin-right:auto; max-width:200px;">
+                    <button id="btn-scan-junk" class="btn primary">Escanear Lixo</button>
+                    <button id="btn-clean-junk" class="btn success disabled" disabled>Limpar Lixo Selecionado</button>
+                </div>
+                <div id="junk-access-warning" class="access-guidance glass mt-20" hidden>
+                    <div>
+                        <strong>Acesso Total ao Disco necessário</strong>
+                        <span>O macOS bloqueou pastas do seu usuário. Autorize o HollyOptimizer, feche e abra novamente o aplicativo e repita a análise.</span>
+                    </div>
+                    <button id="btn-open-full-disk-access" class="btn warning btn-sm">Abrir Acesso Total ao Disco</button>
+                </div>
+                <div class="panel-body glass mt-20">
+                    <div class="table-container">
+                        <table id="junk-table">
+                            <thead>
+                                <tr>
+                                    <th width="5%"><input type="checkbox" id="junk-select-all" aria-label="Selecionar todas as categorias de lixo"></th>
+                                    <th width="25%" data-sort="name">Categoria <span class="sort-icon">▼</span></th>
+                                    <th width="15%" data-sort="size">Tamanho <span class="sort-icon">▼</span></th>
+                                    <th width="10%">Arquivos</th>
+                                    <th>Descrição</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5" class="empty-state">Clique em 'Escanear Lixo' para iniciar...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: LEFTOVERS -->
+            <section id="leftovers-panel" class="panel">
+                <div class="panel-header-actions">
+                    <input type="search" id="leftovers-search" class="search-input" placeholder="Buscar..." style="margin-right:auto; max-width:200px;">
+                    <button id="btn-scan-leftovers" class="btn primary">Escanear Sobras</button>
+                    <button id="btn-clean-leftovers" class="btn danger disabled" disabled>Mover Sobras para a Lixeira</button>
+                </div>
+                <div class="panel-body glass mt-20">
+                    <div class="table-container">
+                        <table id="leftovers-table">
+                            <thead>
+                                <tr>
+                                    <th width="5%"><input type="checkbox" id="leftovers-select-all" aria-label="Seleção em massa de sobras desativada" disabled title="Seleção em massa desativada por segurança"></th>
+                                    <th width="22%" data-sort="name">Sobras do App <span class="sort-icon">▼</span></th>
+                                    <th width="12%" data-sort="size">Tamanho <span class="sort-icon">▼</span></th>
+                                    <th width="11%">Tipo</th>
+                                    <th width="15%">Evidência</th>
+                                    <th>Caminho do Arquivo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="empty-state">Clique em 'Escanear Sobras' para pesquisar sobras no Library...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: UNINSTALLER -->
+            <section id="uninstaller-panel" class="panel">
+                <div class="uninstaller-grid">
+                    <!-- Left: App List -->
+                    <div class="uninstaller-list-column glass">
+                        <div class="column-header uninstaller-list-header">
+                            <h3>Aplicativos Instalados</h3>
+                            <button id="btn-refresh-uninstaller" class="btn primary btn-sm">Atualizar</button>
+                        </div>
+                        <input type="search" id="uninstaller-search" class="search-input mt-15" placeholder="Buscar aplicativo...">
+                        <div class="app-list-scroll mt-15">
+                            <ul id="uninstaller-app-list" class="app-list-ul" style="list-style:none; display:flex; flex-direction:column; gap:6px;">
+                                <li class="empty-state">Carregando aplicativos...</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- Right: App Details & Leftovers -->
+                    <div class="uninstaller-details-column glass">
+                        <div id="uninstaller-empty-details" class="details-empty-state" style="text-align:center; padding:100px 20px;">
+                            <span style="font-size: 40px; display: block; margin-bottom: 15px;">📦</span>
+                            <p class="color-muted" style="font-size:13px; max-width:300px; margin:0 auto; line-height:1.4;">Selecione um aplicativo na lista para analisar e remover seus arquivos de suporte.</p>
+                        </div>
+                        <div id="uninstaller-active-details" style="display: none; height: 100%; flex-direction: column;">
+                            <div class="details-header" style="border-bottom:1px solid var(--glass-border); padding-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
+                                <div class="app-meta" style="display:flex; align-items:center; gap:12px;">
+                                    <div id="unit-app-icon-container" style="display:flex; align-items:center; justify-content:center;">📦</div>
+                                    <div>
+                                        <h3 id="unit-app-name" style="font-size:16px; font-weight:600;">Nome do App</h3>
+                                        <span id="unit-app-version" class="header-badge" style="margin-left: 0; margin-top:5px; display:inline-block;">v1.0</span>
+                                    </div>
+                                </div>
+                                <div class="app-size-info" style="text-align:right;">
+                                    <span class="color-muted" style="font-size:12px; display:block;">Tamanho do App:</span>
+                                    <strong id="unit-app-size" style="font-size:15px; color:var(--accent-gold-light);">0 B</strong>
+                                </div>
+                            </div>
+                            
+                            <div class="details-body mt-15" style="flex-grow:1; display:flex; flex-direction:column; overflow:hidden;">
+                                <h4 style="font-size:13px; font-weight:600; margin-bottom:5px;">Arquivos de Suporte e Caches Relacionados:</h4>
+                                <p class="color-muted" style="font-size:11px; margin-bottom:10px;">Marque os arquivos que deseja remover juntamente com o executável.</p>
+                                <div class="related-files-scroll" style="flex-grow:1; overflow-y:auto; max-height:280px; background-color:rgba(0,0,0,0.15); border-radius:6px; border:1px solid rgba(255,255,255,0.02);">
+                                    <table id="uninstaller-files-table">
+                                        <thead>
+                                            <tr>
+                                                <th width="8%"><input type="checkbox" id="unit-select-all" aria-label="Selecionar todos os arquivos de suporte"></th>
+                                                <th width="50%">Arquivo / Pasta</th>
+                                                <th width="20%">Tamanho</th>
+                                                <th>Tipo</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Related files list -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <div class="details-footer mt-20" style="flex-shrink:0;">
+                                <button id="btn-run-uninstall" class="btn danger w-100" style="justify-content:center; padding:12px 20px;">Desinstalar Completamente</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: DEPENDENCIES -->
+            <section id="dependencies-panel" class="panel">
+                <div class="panel-header-actions">
+                    <div>
+                        <h3 class="section-title">Dependências instaladas</h3>
+                        <p id="dependencies-updated-at" class="section-subtitle">Atualize para consultar Homebrew, NPM e pacotes Pip do usuário.</p>
+                    </div>
+                    <div class="dependency-toolbar">
+                        <button id="btn-refresh-dependencies" class="btn primary">Atualizar Agora</button>
+                        <button id="btn-remove-dependencies" class="btn danger disabled" disabled>Desinstalar Selecionadas</button>
+                    </div>
+                </div>
+                <div class="dependencies-container mt-20">
+                    <!-- Homebrew Section -->
+                    <div class="dep-card glass">
+                        <div class="dep-header">
+                            <span class="dep-logo">🍺</span>
+                            <div>
+                                <h3>Homebrew Manager</h3>
+                                <p id="dep-brew-status" class="dep-subtitle">Checando status...</p>
+                            </div>
+                        </div>
+                        <div class="dep-body">
+                            <div class="dep-stat-row">
+                                <span>Pacotes instalados:</span>
+                                <span id="dep-brew-leaves" class="val-badge">0</span>
+                            </div>
+                            <div class="dep-stat-row">
+                                <span>Dependências Órfãs (Sem uso):</span>
+                                <span id="dep-brew-orphans" class="val-badge warning">0</span>
+                            </div>
+                            <div class="dep-stat-row">
+                                <span>Lixo de Cache:</span>
+                                <span id="dep-brew-cache" class="val-badge">0 B</span>
+                            </div>
+                            <div class="dep-list-scroll mt-10">
+                                <ul id="dep-brew-list" class="dep-mini-list">
+                                    <li>Nenhuma fórmula listada.</li>
+                                </ul>
+                            </div>
+                            <div class="dep-actions mt-15">
+                                <button id="btn-brew-autoremove" class="btn warning disabled" disabled>Executar Autoremove</button>
+                                <button id="btn-brew-cleanup" class="btn success disabled" disabled>Limpar Caches</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- NPM Section -->
+                    <div class="dep-card glass">
+                        <div class="dep-header">
+                            <span class="dep-logo">🟢</span>
+                            <div>
+                                <h3>NPM Node Package</h3>
+                                <p id="dep-npm-status" class="dep-subtitle">Checando status...</p>
+                            </div>
+                        </div>
+                        <div class="dep-body">
+                            <div class="dep-stat-row">
+                                <span>Módulos globais:</span>
+                                <span id="dep-npm-count" class="val-badge">0</span>
+                            </div>
+                            <div class="dep-list-scroll mt-10">
+                                <ul id="dep-npm-list" class="dep-mini-list">
+                                    <li>Nenhum pacote listado.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Pip Section -->
+                    <div class="dep-card glass">
+                        <div class="dep-header">
+                            <span class="dep-logo">🐍</span>
+                            <div>
+                                <h3>Pip Python Packages</h3>
+                                <p id="dep-pip-status" class="dep-subtitle">Checando status...</p>
+                            </div>
+                        </div>
+                        <div class="dep-body">
+                            <div class="dep-stat-row">
+                                <span>Pacotes Python:</span>
+                                <span id="dep-pip-count" class="val-badge">0</span>
+                            </div>
+                            <div class="dep-list-scroll mt-10">
+                                <ul id="dep-pip-list" class="dep-mini-list">
+                                    <li>Nenhum pacote listado.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: STARTUP -->
+            <section id="startup-panel" class="panel">
+                <div class="panel-header-actions">
+                    <button id="btn-scan-startup" class="btn primary">Escanear Inicialização</button>
+                </div>
+                <div class="panel-body glass mt-20">
+                    <div class="table-container">
+                        <table id="startup-table">
+                            <thead>
+                                <tr>
+                                    <th width="12%">Estado</th>
+                                    <th width="20%">Tipo de Serviço</th>
+                                    <th width="30%">Nome do Serviço (Label)</th>
+                                    <th>Caminho do Executável</th>
+                                    <th width="15%">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5" class="empty-state">Clique em 'Escanear Inicialização' para auditar launchd agents...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: LARGE FILES -->
+            <section id="large-files-panel" class="panel">
+                <div class="panel-header-actions">
+                    <div class="filter-controls">
+                        <label for="large-file-size-filter">Tamanho Mínimo:</label>
+                        <select id="large-file-size-filter" class="select-box">
+                            <option value="50">50 MB</option>
+                            <option value="100" selected>100 MB</option>
+                            <option value="500">500 MB</option>
+                            <option value="1000">1 GB</option>
+                        </select>
+                    </div>
+                    <input type="search" id="large-files-search" class="search-input" placeholder="Buscar..." style="margin-right:auto; max-width:200px;">
+                    <div>
+                        <button id="btn-scan-large" class="btn primary">Buscar Arquivos</button>
+                        <button id="btn-clean-large" class="btn danger disabled" disabled>Mover Selecionados para a Lixeira</button>
+                    </div>
+                </div>
+                <div class="panel-body glass mt-20">
+                    <div class="table-container">
+                        <table id="large-files-table">
+                            <thead>
+                                <tr>
+                                    <th width="5%"><input type="checkbox" id="large-select-all" aria-label="Selecionar todos os arquivos grandes"></th>
+                                    <th width="30%" data-sort="name">Nome do Arquivo <span class="sort-icon">▼</span></th>
+                                    <th width="12%" data-sort="size">Tamanho <span class="sort-icon">▼</span></th>
+                                    <th width="15%">Data Modificado</th>
+                                    <th width="12%">Dias Inativo</th>
+                                    <th>Caminho do Arquivo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="empty-state">Clique em 'Buscar Arquivos' para mapear pastas do usuário...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: DUPLICATES -->
+            <section id="duplicates-panel" class="panel">
+                <div class="panel-header-actions">
+                    <button id="btn-scan-duplicates" class="btn primary">Buscar Duplicados</button>
+                    <button id="btn-clean-duplicates" class="btn danger disabled" disabled>Mover Selecionados para a Lixeira</button>
+                </div>
+                <div class="panel-body glass mt-20">
+                    <div class="table-container">
+                        <table id="duplicates-table">
+                            <thead>
+                                <tr>
+                                    <th width="5%"><input type="checkbox" id="dup-select-all" aria-label="Selecionar todas as cópias removíveis"></th>
+                                    <th width="30%" data-sort="name">Nome do Arquivo <span class="sort-icon">▼</span></th>
+                                    <th width="12%" data-sort="size">Tamanho <span class="sort-icon">▼</span></th>
+                                    <th width="15%">Última Modificação</th>
+                                    <th>Caminho do Arquivo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="duplicates-tbody">
+                                <tr>
+                                    <td colspan="5" class="empty-state">Clique em 'Buscar Duplicados' para rodar verificação SHA-256...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PANEL: BROWSER CACHES -->
+            <section id="browser-panel" class="panel">
+                <div class="panel-header-actions">
+                    <button id="btn-scan-browser-caches" class="btn primary">Analisar Navegadores</button>
+                    <button id="btn-clean-browser-caches" class="btn success disabled" disabled>Mover Caches Selecionados para a Lixeira</button>
+                </div>
+                <div class="browser-safety-note glass mt-20">
+                    <span class="browser-safety-icon" aria-hidden="true">🧭</span>
+                    <div>
+                        <strong>Limpeza restrita a caches temporários</strong>
+                        <p>Histórico, cookies, senhas, sessões, favoritos, extensões e perfis nunca entram nesta varredura. Feche o navegador antes de limpar.</p>
+                    </div>
+                </div>
+                <div class="panel-body glass mt-20">
+                    <div class="table-container">
+                        <table id="browser-cache-table">
+                            <thead>
+                                <tr>
+                                    <th width="6%"><span class="sr-only">Selecionar</span></th>
+                                    <th width="18%">Navegador</th>
+                                    <th width="16%">Estado</th>
+                                    <th width="14%">Tamanho</th>
+                                    <th width="12%">Arquivos</th>
+                                    <th>Escopo protegido</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="6" class="empty-state">Clique em “Analisar Navegadores” para localizar caches temporários.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PANEL: SECURITY AUDIT -->
+            <section id="security-panel" class="panel">
+                <div class="panel-header-actions">
+                    <div>
+                        <h3 class="section-title">Postura de segurança do macOS</h3>
+                        <p class="section-subtitle">Diagnóstico somente leitura — nenhuma configuração será alterada.</p>
+                    </div>
+                    <button id="btn-run-security-audit" class="btn primary">Executar Diagnóstico</button>
+                </div>
+                <div id="security-summary" class="security-summary glass mt-20" aria-live="polite">
+                    <div class="security-summary-mark">—</div>
+                    <div>
+                        <strong>Aguardando diagnóstico</strong>
+                        <p>FileVault, Firewall, Gatekeeper, SIP e atualizações automáticas serão verificados.</p>
+                    </div>
+                </div>
+                <div id="security-checks" class="security-checks-grid mt-20">
+                    <div class="security-placeholder glass">Execute o diagnóstico para visualizar as proteções do sistema.</div>
+                </div>
+            </section>
+            
+            <!-- PANEL: NETWORK -->
+            <section id="network-panel" class="panel">
+                <div class="network-dashboard">
+                    <div class="net-diag-card glass">
+                        <div class="net-diag-icon">⚡</div>
+                        <h3>Limpeza de Rede DNS</h3>
+                        <p class="net-desc">Limpe o cache do resolver DNS do macOS se você estiver tendo problemas para carregar sites ou conflitos de IP de rede local.</p>
+                        <button id="btn-net-flush" class="btn success w-100 mt-20">Limpar Cache DNS</button>
+                    </div>
+                    
+                    <div class="net-diag-card glass">
+                        <div class="net-diag-icon">🌐</div>
+                        <h3>Diagnóstico de Latência</h3>
+                        <p class="net-desc">Teste a velocidade de comunicação e a resposta de rede do seu Mac com servidores globais da internet.</p>
+                        <div class="latency-display mt-15">
+                            <span class="latency-label">Latência Média:</span>
+                            <span id="net-latency-val" class="latency-val">N/A</span>
+                        </div>
+                        <button id="btn-net-ping" class="btn primary w-100 mt-20">Medir Latência de Rede</button>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: MEMORY -->
+            <section id="memory-panel" class="panel">
+                <div class="memory-grid">
+                    <!-- Left Column: RAM Meter -->
+                    <div class="memory-meter-card glass">
+                        <div class="ram-circle-container">
+                            <svg class="ram-svg" viewBox="0 0 100 100">
+                                <circle class="ram-bg-circle" cx="50" cy="50" r="40"></circle>
+                                <circle id="ram-progress-circle" class="ram-progress" cx="50" cy="50" r="40" stroke-dasharray="251.327" stroke-dashoffset="251.327"></circle>
+                            </svg>
+                            <div class="ram-percent-text">
+                                <span id="ram-use-pct">0%</span>
+                                <span class="ram-sub">Em uso estimado</span>
+                            </div>
+                        </div>
+                        <div id="ram-pressure-status" class="ram-pressure-badge pressure-unknown">Pressão: indisponível</div>
+                        
+                        <div class="ram-stats-grid mt-20">
+                            <div class="ram-stat-item">
+                                <span class="ram-stat-dot used"></span>
+                                <div class="ram-stat-details">
+                                    <span class="ram-stat-label">Usada</span>
+                                    <strong id="ram-used-val">0 GB</strong>
+                                </div>
+                            </div>
+                            <div class="ram-stat-item">
+                                <span class="ram-stat-dot free"></span>
+                                <div class="ram-stat-details">
+                                    <span class="ram-stat-label">Livre</span>
+                                    <strong id="ram-free-val">0 GB</strong>
+                                </div>
+                            </div>
+                            <div class="ram-stat-item">
+                                <span class="ram-stat-dot cache"></span>
+                                <div class="ram-stat-details">
+                                    <span class="ram-stat-label">Cache Inativo</span>
+                                    <strong id="ram-cache-val">0 GB</strong>
+                                </div>
+                            </div>
+                            <div class="ram-stat-item">
+                                <span class="ram-stat-dot total"></span>
+                                <div class="ram-stat-details">
+                                    <span class="ram-stat-label">Total</span>
+                                    <strong id="ram-total-val">0 GB</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="ram-swap-status" class="ram-pressure-badge pressure-unknown mt-15">Swap: indisponível</div>
+                        <p class="color-muted mt-5" style="font-size:11px; text-align:center; line-height:1.4;">
+                            Swap é memória emprestada do SSD. Zero ou poucos MB é o normal;
+                            gigabytes constantes indicam que a RAM não está dando conta.
+                        </p>
+
+                        <button id="btn-optimize-ram" class="btn primary w-100 mt-20">Reavaliar Memória e Processos</button>
+                        <p class="color-muted mt-10" style="font-size:11px; text-align:center; line-height:1.4;">
+                            Caches de RAM aceleram o sistema e são liberados automaticamente pelo macOS. O HollyOptimizer não executa purge forçado.
+                        </p>
+                    </div>
+                    
+                    <!-- Right Column: Process Manager -->
+                    <div class="memory-processes-card glass">
+                        <div class="column-header" style="border-bottom:1px solid var(--glass-border); padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                            <h3 style="font-size:14px; font-weight:600;">Processos mais pesados (RAM)</h3>
+                            <button id="btn-refresh-ram-processes" class="btn primary py-5 px-10" style="padding: 6px 12px; font-size:12px;">Atualizar</button>
+                        </div>
+                        <div class="table-container mt-15" style="overflow-y:auto; max-height:430px;">
+                            <table id="ram-processes-table">
+                                <thead>
+                                    <tr>
+                                        <th width="15%">PID</th>
+                                        <th width="45%">Nome do Processo</th>
+                                        <th width="20%">RAM Usada</th>
+                                        <th width="20%">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ram-processes-tbody">
+                                    <tr>
+                                        <td colspan="4" class="empty-state">Buscando processos em execução...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PANEL: APPLE SILICON -->
+            <section id="silicon-panel" class="panel">
+                <div class="panel-header-actions">
+                    <input type="search" id="silicon-search" class="search-input" placeholder="Buscar aplicativo..." style="margin-right:auto; max-width:220px;">
+                    <button id="btn-scan-silicon" class="btn primary">Auditar Arquitetura dos Apps</button>
+                </div>
+
+                <div class="panel-body glass mt-20">
+                    <div id="silicon-profile" class="silicon-profile">
+                        <p class="empty-state">Carregando perfil do hardware...</p>
+                    </div>
+
+                    <p id="silicon-summary" class="color-muted mt-15" style="font-size:12px; line-height:1.5;">
+                        Esta aba é <strong>somente leitura</strong>: ela identifica quais aplicativos
+                        ainda são Intel e portanto rodam traduzidos pelo Rosetta 2, gastando mais
+                        RAM e bateria. Nada é removido nem modificado — a correção é instalar a
+                        versão Apple Silicon do fabricante.
+                    </p>
+
+                    <div id="silicon-totals" class="silicon-totals mt-15"></div>
+
+                    <div class="table-container mt-15" style="overflow-y:auto; max-height:420px;">
+                        <table id="silicon-table">
+                            <thead>
+                                <tr>
+                                    <th width="34%">Aplicativo</th>
+                                    <th width="24%">Arquitetura</th>
+                                    <th width="42%">Situação neste Mac</th>
+                                </tr>
+                            </thead>
+                            <tbody id="silicon-tbody">
+                                <tr>
+                                    <td colspan="3" class="empty-state">Clique em “Auditar Arquitetura dos Apps” para analisar os aplicativos instalados.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal Loader/Notification -->
+    <div id="loader-overlay" class="modal-overlay" aria-hidden="true">
+        <div class="modal-card glass" role="status" aria-live="polite">
+            <div class="spinner"></div>
+            <p id="loader-message" class="modal-message">Analisando dados do macOS...</p>
+            <p id="loader-progress" class="loader-progress" hidden></p>
+            <button id="btn-cancel-operation" class="btn btn-ghost" hidden>Cancelar operação</button>
+        </div>
+    </div>
+
+    <!-- Custom Dialog Modal -->
+    <div id="dialog-overlay" class="modal-overlay dialog-overlay" aria-hidden="true">
+        <div class="dialog-card glass" role="dialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-message">
+            <h3 id="dialog-title" class="dialog-title">Confirmação</h3>
+            <p id="dialog-message" class="dialog-message"></p>
+            <div id="dialog-actions" class="dialog-actions">
+                <button id="dialog-cancel" class="btn btn-ghost">Cancelar</button>
+                <button id="dialog-confirm" class="btn primary">Confirmar</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

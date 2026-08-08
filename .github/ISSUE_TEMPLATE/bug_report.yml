@@ -1,0 +1,63 @@
+name: Relatar um erro
+description: Informe um comportamento reproduzível do HollyOptimizer.
+title: "[Erro]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado pelo relato. Não publique dados pessoais nem detalhes de vulnerabilidades exploráveis; nesses casos, consulte SECURITY.md.
+
+  - type: input
+    id: version
+    attributes:
+      label: Versão do HollyOptimizer
+      placeholder: 0.6.2 (build 15)
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS e arquitetura
+      placeholder: macOS 27.0, Apple M5 (arm64)
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: O que aconteceu?
+      description: Descreva o resultado observado e o resultado esperado.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Como reproduzir
+      description: Liste passos mínimos, sem incluir arquivos ou informações pessoais.
+      placeholder: |
+        1. Abrir a aba...
+        2. Selecionar...
+        3. Observar...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Registros ou capturas
+      description: Remova nomes, caminhos pessoais, tokens e outros dados sensíveis antes de anexar.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmações
+      options:
+        - label: Procurei por uma issue existente sobre o mesmo problema.
+          required: true
+        - label: Removi dados pessoais e credenciais do relato.
+          required: true

@@ -1,0 +1,34 @@
+name: Sugerir um recurso
+description: Proponha uma melhoria compatível com o modelo de segurança.
+title: "[Recurso]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Necessidade
+      description: Qual problema a sugestão resolveria?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposta
+      description: Explique o comportamento desejado e como o usuário manteria o controle da operação.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Segurança
+      options:
+        - label: A proposta preserva confirmação explícita e recuperação de arquivos quando houver remoção.
+          required: true
