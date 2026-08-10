@@ -1,11 +1,10 @@
 <p align="center">
-  <img src="hollyoptimizer_app_icon.png" width="128" alt="Ícone do HollyOptimizer">
+  <img src="docs/branding/holly-banner.svg" alt="HollyOptimizer — diagnóstico e limpeza segura para macOS" width="100%">
 </p>
 
-<h1 align="center">HollyOptimizer</h1>
-
 <p align="center">
-  Cuidado inteligente, transparente e reversível para o macOS.
+  <strong>Diagnóstico e limpeza segura, transparente e reversível para macOS.</strong><br>
+  Política conservadora · Apple Silicon · Recuperação pela Lixeira
 </p>
 
 <p align="center">
@@ -13,8 +12,12 @@
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-111827?logo=apple">
   <img alt="Apple Silicon" src="https://img.shields.io/badge/Apple%20Silicon-nativo-16a34a?logo=apple">
   <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white">
-  <a href="LICENSE"><img alt="Licença Apache 2.0" src="https://img.shields.io/badge/licen%C3%A7a-Apache--2.0-d4a64f"></a>
+  <a href="LICENSE"><img alt="Licença Apache 2.0" src="https://img.shields.io/badge/licença-Apache--2.0-d4a64f"></a>
 </p>
+
+> **Parte da suíte Holly**  
+> Ferramentas local-first para texto, documentos e mídia, com privacidade por padrão e segurança verificável.  
+> [HollyOCR](https://github.com/HollyGM/HollyOCR) · [HollyTranscrição](https://github.com/HollyGM/HollyTranscricao) · [HollyCorretor](https://github.com/HollyGM/HollyCorretor)
 
 ![Dashboard do HollyOptimizer](docs/screenshots/dashboard.png)
 
