@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="360"><stop stop-color="#071019"/><stop offset="1" stop-color="#10251D"/></linearGradient>
+    <linearGradient id="accent" x1="150" y1="70" x2="1180" y2="320"><stop stop-color="#56D28E"/><stop offset="1" stop-color="#D4A64F"/></linearGradient>
+  </defs>
+  <rect width="1280" height="360" rx="28" fill="url(#bg)"/>
+  <g opacity="0.22" stroke="#9FB59D" stroke-width="2"><path d="M48 82H178L212 116H336"/><path d="M72 289H214L248 253H382"/><path d="M1016 75H1128L1162 110H1235"/><path d="M944 292H1066L1098 258H1231"/></g>
+  <circle cx="184" cy="180" r="84" fill="#08121C" stroke="url(#accent)" stroke-width="6"/>
+  <path d="M184 118L238 149L233 214L184 248L135 214L130 149L184 118Z" fill="#11241D" stroke="url(#accent)" stroke-width="4"/>
+  <path d="M146 191A38 38 0 1 1 222 191" stroke="url(#accent)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M184 191L211 171" stroke="#F4F8FF" stroke-width="8" stroke-linecap="round"/><circle cx="184" cy="191" r="9" fill="url(#accent)"/>
+  <circle cx="184" cy="180" r="109" stroke="url(#accent)" stroke-width="2" stroke-dasharray="7 11" opacity="0.55"/>
+  <text x="305" y="106" fill="#79E0A5" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2.8">HOLLY SUITE · SAFE MACOS CARE</text>
+  <text x="305" y="172" fill="#F3FFF7" font-family="Arial, sans-serif" font-size="60" font-weight="700">HollyOptimizer</text>
+  <text x="305" y="214" fill="#DDEFE2" font-family="Arial, sans-serif" font-size="26">Diagnóstico e limpeza conservadora, transparente e reversível para macOS</text>
+  <text x="305" y="255" fill="#B8CCBC" font-family="Arial, sans-serif" font-size="20">Segurança operacional · Apple Silicon · Limpeza reversível · Política conservadora</text>
+</svg>
