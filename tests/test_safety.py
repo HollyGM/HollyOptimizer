@@ -976,6 +976,19 @@ class OperationalSafetyTests(unittest.TestCase):
         self.assertNotIn("private-client-name", str(report))
         self.assertEqual(report["messages"][0], "O macOS bloqueou o acesso. Verifique Acesso Total ao Disco.")
 
+    def test_diagnostics_classify_policy_rejection_separately_from_unexpected(self):
+        """A ValueError from the safety gate itself is a correct rejection,
+        not a bug, and must not be reported to the user as an unexpected failure."""
+        with mock.patch.object(diagnostics, "configure_logging"), mock.patch.object(
+            diagnostics._LOGGER, "warning"
+        ):
+            diagnostics.record_issue(
+                "test", ValueError("Item fora da política segura: /tmp/x"), "/tmp/x"
+            )
+        report = diagnostics.consume_issues("test")
+        self.assertEqual(report["counts"], {"policy_blocked": 1})
+        self.assertNotIn("inesperada", report["messages"][0])
+
     def test_diagnostics_coalesce_repeated_permission_scope(self):
         denied = PermissionError(1, "Operation not permitted")
         with mock.patch.object(diagnostics, "configure_logging"), mock.patch.object(
@@ -1073,6 +1086,22 @@ class OperationalSafetyTests(unittest.TestCase):
         root = os.path.expanduser("~/.npm/_cacache")
         self.assertTrue(utils._is_under_allow_root(os.path.realpath(child)))
         self.assertFalse(utils._is_under_allow_root(os.path.realpath(root)))
+
+    def test_cargo_and_gradle_cache_children_are_deletable_but_roots_are_not(self):
+        for root, child in (
+            ("~/.cargo/registry/cache", "~/.cargo/registry/cache/index.crates.io-abc"),
+            ("~/.cargo/registry/src", "~/.cargo/registry/src/index.crates.io-abc"),
+            ("~/.gradle/caches", "~/.gradle/caches/modules-2"),
+        ):
+            with self.subTest(root=root):
+                self.assertTrue(
+                    utils._is_under_allow_root(os.path.realpath(os.path.expanduser(child)))
+                )
+                self.assertFalse(
+                    utils._is_under_allow_root(os.path.realpath(os.path.expanduser(root)))
+                )
+        self.assertTrue(junk.JUNK_TARGETS["cargo_cache"]["cleanable"])
+        self.assertTrue(junk.JUNK_TARGETS["gradle_cache"]["cleanable"])
 
     def test_apple_startup_items_cannot_be_toggled(self):
         with tempfile.TemporaryDirectory() as temp_dir:

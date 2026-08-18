@@ -23,6 +23,10 @@
                     <svg viewBox="0 0 24 24" class="nav-icon"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
                     <span>Dashboard</span>
                 </button>
+                <button class="nav-btn" data-target="permissions-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M12 2 4 5v6c0 5.05 3.41 9.76 8 11 4.59-1.24 8-5.95 8-11V5l-8-3zm3.5 6.5-4.6 4.6L8.5 10.7l-1.1 1.1 3.5 3.5 5.7-5.7-1.1-1.1z"/></svg>
+                    <span>Permissões</span>
+                </button>
                 <button class="nav-btn" data-target="junk-panel">
                     <svg viewBox="0 0 24 24" class="nav-icon"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                     <span>Lixo do Sistema</span>
@@ -93,6 +97,19 @@
             
             <!-- PANEL: DASHBOARD -->
             <section id="dashboard-panel" class="panel active">
+                <div id="permissions-banner" class="access-guidance glass mt-20" hidden>
+                    <div>
+                        <strong id="permissions-banner-title">Verificando permissões do macOS…</strong>
+                        <span id="permissions-banner-detail">O HollyOptimizer precisa de algumas autorizações para funcionar por completo.</span>
+                    </div>
+                    <button id="btn-goto-permissions" class="btn warning btn-sm">Ver Permissões</button>
+                </div>
+                <div id="ai-summary-card" class="access-guidance glass mt-20" hidden>
+                    <div>
+                        <strong>✨ Resumo por Apple Intelligence</strong>
+                        <span id="ai-summary-text"></span>
+                    </div>
+                </div>
                 <div class="dashboard-grid">
                     <div class="overview-card glass">
                         <div class="scanner-circle-container">
@@ -154,7 +171,28 @@
                     </div>
                 </div>
             </section>
-            
+
+            <!-- PANEL: PERMISSIONS -->
+            <section id="permissions-panel" class="panel">
+                <div class="panel-header-actions">
+                    <div>
+                        <h3 class="section-title">Permissões do macOS necessárias</h3>
+                        <p class="section-subtitle">Cada item abaixo leva direto ao painel correto dos Ajustes do Sistema. Nada aqui altera uma configuração sozinho — você decide e confirma no próprio macOS.</p>
+                    </div>
+                    <button id="btn-run-permissions-audit" class="btn primary">Verificar Novamente</button>
+                </div>
+                <div id="permissions-summary" class="security-summary glass mt-20" aria-live="polite">
+                    <div class="security-summary-mark">—</div>
+                    <div>
+                        <strong>Aguardando verificação</strong>
+                        <p>Acesso Total ao Disco e Automação (Finder, System Events) serão verificados.</p>
+                    </div>
+                </div>
+                <div id="permissions-checks" class="security-checks-grid mt-20">
+                    <div class="security-placeholder glass">Abra esta aba para verificar automaticamente as permissões do aplicativo.</div>
+                </div>
+            </section>
+
             <!-- PANEL: JUNK CLEANER -->
             <section id="junk-panel" class="panel">
                 <div class="panel-header-actions">
@@ -434,7 +472,7 @@
                                     <th width="30%" data-sort="name">Nome do Arquivo <span class="sort-icon">▼</span></th>
                                     <th width="12%" data-sort="size">Tamanho <span class="sort-icon">▼</span></th>
                                     <th width="15%">Data Modificado</th>
-                                    <th width="12%">Dias Inativo</th>
+                                    <th width="12%" data-sort="number">Dias Inativo <span class="sort-icon">▼</span></th>
                                     <th>Caminho do Arquivo</th>
                                 </tr>
                             </thead>

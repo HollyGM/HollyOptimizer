@@ -23,16 +23,18 @@
 
 O **HollyOptimizer** é um utilitário desktop para diagnosticar o Mac, localizar desperdício de espaço e executar correções seguras. O projeto combina Python, PyWebView, HTML, CSS e JavaScript e foi otimizado para Apple Silicon, sem abandonar a compatibilidade de desenvolvimento com Macs Intel.
 
-> A versão atual é **0.6.2 (build 15)**. O aplicativo foi validado em um MacBook com chip Apple M5. O código é específico do macOS; Windows e Linux poderão receber implementações próprias no futuro, mas ainda não são suportados.
+> A versão atual é **0.7.0 (build 16)**. O aplicativo foi validado em um MacBook com chip Apple M5. O código é específico do macOS; Windows e Linux poderão receber implementações próprias no futuro, mas ainda não são suportados.
 
 ## Recursos
 
-- **Limpeza reversível:** caches e arquivos temporários elegíveis são enviados à Lixeira nativa; ela nunca é esvaziada automaticamente.
+- **Permissões guiadas:** ao abrir o app, o Acesso Total ao Disco e as autorizações de Automação (Finder, System Events) são verificados automaticamente, com um botão direto para o painel correto dos Ajustes do Sistema para cada um.
+- **Resumo por Apple Intelligence:** um modelo on-device (Foundation Models) reescreve o resumo da varredura em linguagem natural, sem alterar nenhum número. Totalmente opcional e local — nada sai do Mac.
+- **Limpeza reversível:** caches e arquivos temporários elegíveis são enviados à Lixeira nativa; ela nunca é esvaziada automaticamente. Inclui caches de desenvolvimento (NPM, Pip, Cargo, Gradle, Xcode DerivedData).
 - **Política central de segurança:** Keychains, iCloud, Mail, Messages, SSH, bancos de dados, cookies e outras áreas sensíveis são bloqueados.
 - **Sobras de aplicativos:** detecção conservadora, limitada a itens cujo aplicativo de origem pode ser verificado.
 - **Navegadores:** limpeza dedicada de caches de Safari, Firefox e navegadores Chromium, preservando histórico, senhas, cookies, sessões, favoritos e extensões.
 - **Inicialização:** inventário e gerenciamento de LaunchAgents, LaunchDaemons e itens de início de sessão.
-- **Arquivos grandes e duplicados:** busca configurável, confirmação antes da remoção e revalidação por SHA-256.
+- **Arquivos grandes e duplicados:** busca configurável, ordenação por tamanho ou dias de inatividade, confirmação antes da remoção e revalidação por SHA-256.
 - **Dependências:** auditoria de Homebrew, NPM e Pip.
 - **Segurança:** diagnóstico somente leitura de FileVault, Firewall, Gatekeeper, SIP e atualizações.
 - **Rede e memória:** diagnóstico de DNS, latência, pressão de memória e swap, sem usar `purge`.
@@ -125,6 +127,7 @@ O alvo padrão é a arquitetura nativa do Mac usado na compilação. Solicite `u
 HollyOptimizer/
 ├── core/                       # Backend e política de segurança
 ├── gui/                        # Interface HTML, CSS e JavaScript
+├── tools/ai_summary/           # Auxiliar Swift opcional (Apple Intelligence on-device)
 ├── tests/                      # Testes automatizados de segurança
 ├── docs/screenshots/           # Imagens usadas na documentação
 ├── hollyoptimizer_gui.py       # Aplicativo desktop

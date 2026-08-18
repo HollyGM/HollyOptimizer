@@ -60,6 +60,13 @@ def _classify(exc: BaseException) -> tuple[str, str]:
         return "changed_during_scan", "Alguns itens mudaram durante a varredura."
     if isinstance(exc, OSError):
         return "io_error", "Alguns itens não puderam ser lidos pelo macOS."
+    if isinstance(exc, ValueError):
+        # Raised by the safety gate itself (measure_and_validate_tree,
+        # is_safe_app_bundle, snapshot_path_identity...) when it correctly
+        # refuses a symlink, document package or out-of-policy item. This is
+        # the policy working as intended, not a failure, so it gets its own
+        # reassuring message instead of falling into "unexpected".
+        return "policy_blocked", "Um item foi ignorado pela política de segurança (link, pacote ou local fora do escopo permitido)."
     return "unexpected", "Ocorreu uma falha inesperada em parte da operação."
 
 

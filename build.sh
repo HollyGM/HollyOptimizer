@@ -48,6 +48,27 @@ if [ ! -f "HollyOptimizer.icns" ]; then
     echo "⚠️  HollyOptimizer.icns não encontrado — compile sem ícone ou adicione o arquivo."
 fi
 
+# ── Assistente Apple Intelligence (opcional) ────────────────────────────────
+# FoundationModels só existe em Swift, então este auxiliar compila separado do
+# app principal e roda como subprocesso. Só existe hardware Apple Silicon com
+# Apple Intelligence; em host Intel ou sem swiftc o passo é pulado sem falhar
+# o build — core/ai_assistant.py já degrada sozinho quando o binário falta.
+AI_HELPER_SRC="tools/ai_summary/main.swift"
+AI_HELPER_BIN="tools/ai_summary/hollyoptimizer-ai"
+if [ "$HOST_ARCH" = "arm64" ] && command -v swiftc >/dev/null 2>&1; then
+    echo "🧠 Compilando o auxiliar on-device de Apple Intelligence..."
+    if swiftc -O "$AI_HELPER_SRC" -o "$AI_HELPER_BIN"; then
+        chmod +x "$AI_HELPER_BIN"
+        echo "✓ Auxiliar de IA compilado: $AI_HELPER_BIN"
+    else
+        echo "⚠️  Falha ao compilar o auxiliar de IA; o app seguirá sem o resumo inteligente."
+        rm -f "$AI_HELPER_BIN"
+    fi
+else
+    echo "ℹ️  Pulando o auxiliar de IA (requer host Apple Silicon com swiftc)."
+    rm -f "$AI_HELPER_BIN"
+fi
+
 echo "📦 Executando PyInstaller com HollyOptimizer.spec..."
 "$PYTHON_BIN" -m PyInstaller --clean --noconfirm HollyOptimizer.spec
 
@@ -76,6 +97,21 @@ fi
 
 if [ -n "${CODESIGN_IDENTITY:-}" ]; then
     echo "🔐 Aplicando assinatura Developer ID e hardened runtime..."
+
+    # PyInstaller's onedir layout places collected resources under
+    # Contents/Frameworks (confirmed via the --self-test gui_assets path),
+    # not Contents/Resources.
+    AI_HELPER_BUNDLED="$APP_PATH/Contents/Frameworks/ai/hollyoptimizer-ai"
+    if [ -f "$AI_HELPER_BUNDLED" ]; then
+        # Nested code must be signed before the outer bundle: the notary
+        # service inspects every Mach-O it finds, not only the ones PyInstaller
+        # already signs from a.binaries. This loose executable was added via
+        # a.datas, so it needs its own explicit pass first.
+        echo "🔐 Assinando o auxiliar de IA embutido..."
+        codesign --force --options runtime --timestamp \
+            --sign "$CODESIGN_IDENTITY" "$AI_HELPER_BUNDLED"
+    fi
+
     # PyInstaller signs collected nested binaries with CODESIGN_IDENTITY.
     # Sign only the outer bundle here; --deep is reserved for verification.
     codesign --force --options runtime --timestamp \

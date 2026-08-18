@@ -97,6 +97,9 @@ ALLOW_DELETE_ROOTS = [
     "~/Library/iTunes",
     "~/Applications",
     "~/.npm/_cacache",
+    "~/.cargo/registry/cache",
+    "~/.cargo/registry/src",
+    "~/.gradle/caches",
 ]
 
 SENSITIVE_EXTENSIONS = {".sqlite", ".sqlite3", ".sqlitedb", ".db", ".keychain", ".keychain-db"}

@@ -255,7 +255,12 @@ window.addEventListener('pywebviewready', () => {
     loadNetworkPingHeader();
     loadDashboardRam();
     refreshDiskUsage();
-    
+
+    // Proactively check required macOS permissions on launch so the user is
+    // pointed at the right Settings pane before a feature fails deep in a
+    // scan. Backgrounded: no loader, never blocks the rest of the UI.
+    runPermissionsAudit(false);
+
     // Bind Scan and Action Buttons
     bindButtons();
 });
@@ -331,6 +336,12 @@ function bindButtons() {
 
     // 9. Read-only security audit
     document.getElementById('btn-run-security-audit').addEventListener('click', runSecurityAudit);
+
+    // 9c. Permissions panel (Full Disk Access + Automation)
+    document.getElementById('btn-run-permissions-audit').addEventListener('click', () => runPermissionsAudit(true));
+    document.getElementById('btn-goto-permissions').addEventListener('click', () => {
+        document.querySelector('.nav-btn[data-target="permissions-panel"]').click();
+    });
 
     // 9b. Read-only Apple Silicon architecture audit
     document.getElementById('btn-scan-silicon').addEventListener('click', runSiliconAudit);
@@ -421,6 +432,15 @@ async function runCompleteScan() {
             : '';
         document.getElementById('system-status-msg').textContent = "Varredura Concluída!";
         document.getElementById('system-status-sub').textContent = `${formatBytes(totalSavings)} de lixo e caches podem ser movidos para a Lixeira. ${scannedLeftovers.length} sobra(s) aguardam revisão manual.${manualNote}`;
+
+        // Fire-and-forget: never blocks the scan result on an optional,
+        // on-device-only rewrite of the sentence above.
+        maybeShowAiSummary(
+            `Uma varredura do HollyOptimizer encontrou ${formatBytes(totalSavings)} ` +
+            `reaproveitáveis em lixo do sistema e caches de navegador. ` +
+            `${scannedLeftovers.length} sobra(s) de aplicativos desinstalados aguardam revisão manual. ` +
+            `${scannedStartup.length} item(ns) de inicialização estão cadastrados.${manualNote}`
+        );
         return totalSavings;
         
     } catch (err) {
@@ -1395,6 +1415,119 @@ async function openSecuritySetting(checkId) {
     }
 }
 
+// ==================== PERMISSIONS PANEL ====================
+async function runPermissionsAudit(showSpinner) {
+    const summary = document.getElementById('permissions-summary');
+    const checksContainer = document.getElementById('permissions-checks');
+    if (showSpinner) showLoader('Verificando permissões do macOS...');
+    try {
+        const report = await window.pywebview.api.run_permissions_audit();
+        renderPermissionsReport(report);
+        updatePermissionsBanner(report);
+        return report;
+    } catch (err) {
+        if (checksContainer) {
+            checksContainer.innerHTML = `<div class="security-placeholder glass">${escapeHtml(err.message || err)}</div>`;
+        }
+        return null;
+    } finally {
+        if (showSpinner) hideLoader();
+    }
+}
+
+function renderPermissionsReport(report) {
+    const summary = document.getElementById('permissions-summary');
+    const checksContainer = document.getElementById('permissions-checks');
+    if (!summary || !checksContainer) return;
+
+    const statusMeta = {
+        ok: { mark: '✓', title: 'Todas as permissões concedidas', css: 'ok' },
+        attention: { mark: '!', title: 'Algumas permissões precisam de atenção', css: 'attention' },
+        unknown: { mark: '?', title: 'Verificação parcialmente concluída', css: 'unknown' },
+    };
+    const meta = statusMeta[report.status] || statusMeta.unknown;
+    summary.className = `security-summary glass mt-20 ${meta.css}`;
+    summary.innerHTML = `
+        <div class="security-summary-mark">${meta.mark}</div>
+        <div>
+            <strong>${escapeHtml(meta.title)}</strong>
+            <p>${report.summary.ok} concedida(s) · ${report.summary.attention} pendente(s) · ${report.summary.unknown} não verificada(s)</p>
+        </div>
+        <span class="read-only-badge">Somente leitura</span>
+    `;
+
+    checksContainer.innerHTML = report.checks.map(check => {
+        const icon = check.status === 'ok' ? '✓' : (check.status === 'attention' ? '!' : '?');
+        const action = check.status !== 'ok' && check.settings_url
+            ? `<button class="btn primary btn-sm permission-settings-btn" data-check-id="${escapeHtml(check.id)}">Abrir nos Ajustes do Sistema</button>`
+            : '';
+        return `
+            <article class="security-check-card glass ${escapeHtml(check.status)}">
+                <div class="security-check-header">
+                    <span class="security-check-icon">${icon}</span>
+                    <div>
+                        <h4>${escapeHtml(check.name)}</h4>
+                        <span class="security-check-label">${escapeHtml(check.label)}</span>
+                    </div>
+                </div>
+                <p class="security-check-detail">${escapeHtml(check.reason)}</p>
+                ${action}
+            </article>
+        `;
+    }).join('');
+    checksContainer.querySelectorAll('.permission-settings-btn').forEach(button => {
+        button.addEventListener('click', () => openPermissionSetting(button.dataset.checkId));
+    });
+}
+
+function updatePermissionsBanner(report) {
+    const banner = document.getElementById('permissions-banner');
+    if (!banner || !report) return;
+    const pending = report.checks.filter(check => check.status === 'attention');
+    if (pending.length === 0) {
+        banner.hidden = true;
+        return;
+    }
+    document.getElementById('permissions-banner-title').textContent = pending.length === 1
+        ? '1 permissão precisa de atenção'
+        : `${pending.length} permissões precisam de atenção`;
+    document.getElementById('permissions-banner-detail').textContent =
+        `${pending.map(check => check.name).join(' · ')} — sem elas, algumas funções ficam parciais.`;
+    banner.hidden = false;
+}
+
+async function openPermissionSetting(checkId) {
+    try {
+        const [success, message] = await window.pywebview.api.open_permission_setting(checkId);
+        showToast(message, success ? 'info' : 'warning', 5000);
+    } catch (err) {
+        showToast(`Não foi possível abrir os Ajustes do Sistema: ${err.message || err}`, 'error');
+    }
+}
+
+// ==================== ON-DEVICE AI SUMMARY (optional) ====================
+async function maybeShowAiSummary(facts) {
+    const card = document.getElementById('ai-summary-card');
+    const textEl = document.getElementById('ai-summary-text');
+    if (!card || !textEl) return;
+    try {
+        const available = await window.pywebview.api.ai_summary_available();
+        if (!available) {
+            card.hidden = true;
+            return;
+        }
+        const result = await window.pywebview.api.get_ai_summary(facts);
+        if (result && result.available && result.summary) {
+            textEl.textContent = result.summary;
+            card.hidden = false;
+        } else {
+            card.hidden = true;
+        }
+    } catch (_) {
+        card.hidden = true;
+    }
+}
+
 // ==================== APPLE SILICON PANEL (read-only) ====================
 const SILICON_CATEGORY_META = {
     intel:     { badge: 'Intel',      css: 'attention', order: 'Somente Intel — traduzido pelo Rosetta 2' },
@@ -2083,6 +2216,10 @@ function setupTableInteractions() {
                     };
                     aVal = parseSize(aVal);
                     bVal = parseSize(bVal);
+                    return isAsc ? aVal - bVal : bVal - aVal;
+                } else if (type === 'number') {
+                    aVal = parseFloat(aVal) || 0;
+                    bVal = parseFloat(bVal) || 0;
                     return isAsc ? aVal - bVal : bVal - aVal;
                 } else {
                     return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);

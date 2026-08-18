@@ -17,11 +17,19 @@ _icon = 'HollyOptimizer.icns' if os.path.exists('HollyOptimizer.icns') else None
 _target_arch = os.environ.get('HOLLYOPTIMIZER_TARGET_ARCH') or None
 _codesign_identity = os.environ.get('CODESIGN_IDENTITY') or None
 
+_datas = [('gui', 'gui'), ('hollyoptimizer_app_icon.png', '.')]
+_ai_helper = os.path.join('tools', 'ai_summary', 'hollyoptimizer-ai')
+if os.path.isfile(_ai_helper):
+    # Optional on-device Apple Intelligence helper (Foundation Models). Built
+    # separately by build.sh only on Apple Silicon; harmless to omit — the
+    # app already falls back to a deterministic summary when it is missing.
+    _datas.append((_ai_helper, 'ai'))
+
 a = Analysis(
     ['hollyoptimizer_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('gui', 'gui'), ('hollyoptimizer_app_icon.png', '.')],
+    datas=_datas,
     hiddenimports=['webview', 'objc', 'Foundation', 'AppKit'],
     hookspath=[],
     hooksconfig={},

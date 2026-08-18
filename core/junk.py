@@ -116,6 +116,18 @@ JUNK_TARGETS = {
         "roots": ["~/Library/Caches/pip"],
         "cleanable": True,
     },
+    "cargo_cache": {
+        "name": "Cache do Cargo (Rust)",
+        "description": "Pacotes .crate baixados e fontes extraídas pelo Cargo. Serão baixados novamente quando necessário.",
+        "roots": ["~/.cargo/registry/cache", "~/.cargo/registry/src"],
+        "cleanable": True,
+    },
+    "gradle_cache": {
+        "name": "Cache do Gradle",
+        "description": "Dependências e artefatos de build baixados pelo Gradle (Android/Java). Serão baixados novamente quando necessário.",
+        "roots": ["~/.gradle/caches"],
+        "cleanable": True,
+    },
     # ---- Inventory only: measured, never cleaned automatically ----
     "ios_backups": {
         "name": "Backups de iPhone/iPad",

@@ -9,6 +9,19 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 - Empacotamento público assinado e notarizado para distribuição fora da máquina de desenvolvimento.
 
+## [0.7.0] - 2026-08-18
+
+### Adicionado
+
+- Painel **Permissões**: verifica automaticamente, ao abrir o app, Acesso Total ao Disco e as duas autorizações de Automação (Finder e System Events) usadas pelo aplicativo, e leva o usuário direto ao painel correto dos Ajustes do Sistema para cada uma. Um aviso no Dashboard aparece sempre que algo precisa de atenção.
+- Resumo por **Apple Intelligence** on-device (Foundation Models) no Dashboard: reescreve o resumo determinístico de uma varredura em uma frase mais natural, sem alterar nenhum número. Roda inteiramente no dispositivo, opcional, e falha em silêncio (volta ao resumo padrão) em qualquer Mac ou versão do macOS sem suporte.
+- Duas novas categorias de limpeza reversível: cache do **Cargo** (Rust) e cache do **Gradle** (Android/Java), seguindo a mesma política de segurança das demais.
+- Ordenação por "Dias Inativo" na aba Arquivos Grandes, para achar arquivos esquecidos e não só os maiores.
+
+### Corrigido
+
+- Itens rejeitados pela própria política de segurança (link simbólico, pacote de documento, item fora do escopo) eram registrados como "falha inesperada" no relatório de varredura; agora aparecem com uma mensagem correta de bloqueio por política.
+
 ## [0.6.2] - 2026-08-08
 
 ### Adicionado
@@ -32,5 +45,6 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Build nativo para Apple Silicon com suporte opcional a `universal2`.
 - Dependências atualizadas e fixadas para builds reproduzíveis.
 
-[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.6.2...HEAD
+[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/HollyGM/HollyOptimizer/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/HollyGM/HollyOptimizer/releases/tag/v0.6.2

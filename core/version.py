@@ -9,6 +9,6 @@ APP_NAME = "HollyOptimizer"
 APP_DISPLAY_NAME = "HollyOptimizer"
 BUNDLE_IDENTIFIER = "com.thiagoalbuquerque.hollyoptimizer"
 
-VERSION = "0.6.2"
-BUILD = 15
+VERSION = "0.7.0"
+BUILD = 16
 VERSION_STRING = f"{VERSION} (build {BUILD})"

@@ -8,6 +8,7 @@ import webview
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from core import ai_assistant
 from core import progress as operation_progress
 from core.apps import delete_leftover, scan_leftovers
 from core.browser_cleaner import (
@@ -33,6 +34,7 @@ from core.memory import (
     optimize_ram,
 )
 from core.network import flush_dns, run_network_diagnostic
+from core.permissions import open_permission_setting, run_permissions_audit
 from core.security_audit import open_security_setting, run_security_audit
 from core.silicon import get_hardware_profile, scan_app_architectures
 from core.startup import (
@@ -278,6 +280,20 @@ class JsApi:
     def open_security_setting(self, check_id: str) -> tuple:
         return open_security_setting(check_id)
 
+    def run_permissions_audit(self) -> dict:
+        return _run_heavy("permissions_audit", run_permissions_audit)
+
+    def open_permission_setting(self, check_id: str) -> tuple:
+        return open_permission_setting(check_id)
+
+    def ai_summary_available(self) -> bool:
+        return ai_assistant.is_available()
+
+    def get_ai_summary(self, facts: str) -> dict:
+        if not isinstance(facts, str):
+            raise ValueError("Resumo inválido.")
+        return _run_heavy("ai_summary", ai_assistant.summarize, facts)
+
     def reset_auth_state(self) -> None:
         reset_auth_state()
 
@@ -311,6 +327,7 @@ def main():
 
     html_path = os.path.join(current_dir, "gui", "index.html")
     icon_path = os.path.join(current_dir, "hollyoptimizer_app_icon.png")
+    ai_assistant.configure(current_dir)
 
     if "--self-test" in sys.argv:
         from core.self_test import run_self_test
