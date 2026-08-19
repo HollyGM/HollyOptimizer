@@ -416,6 +416,17 @@ def is_protected_path(path: str) -> bool:
     except ValueError:
         return True
 
+# A concurrent second AppleEvent to the same target app, while the OS is
+# still resolving the first one's Automation permission dialog, can come back
+# as an immediate "user canceled" instead of queuing behind it. Every call
+# site that sends Finder or System Events automation requests serializes
+# through the matching lock so a background check (Permissions panel) can
+# never race a real action (Esvaziar Lixeira, itens de início) against the
+# same target.
+FINDER_AUTOMATION_LOCK = threading.RLock()
+SYSTEM_EVENTS_AUTOMATION_LOCK = threading.RLock()
+
+
 def run_command(command: list[str], timeout: int = 120) -> tuple:
     """Executa um comando como argv, sem shell, e retorna código/saídas."""
     if not command or not all(isinstance(argument, str) for argument in command):
@@ -734,9 +745,10 @@ def empty_trash() -> tuple[bool, str, bool]:
         'return (beforeCount as text) & "|" & (afterCount as text)\n'
         'end tell'
     )
-    code, stdout, finder_error = run_command(
-        ["/usr/bin/osascript", "-e", finder_script], timeout=300
-    )
+    with FINDER_AUTOMATION_LOCK:
+        code, stdout, finder_error = run_command(
+            ["/usr/bin/osascript", "-e", finder_script], timeout=300
+        )
     if code == 0:
         try:
             before_count, after_count = (int(value) for value in stdout.split("|", 1))

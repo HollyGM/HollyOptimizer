@@ -46,6 +46,9 @@ navButtons.forEach(btn => {
         } else if (targetId === 'silicon-panel') {
             stopMemoryMonitor();
             loadHardwareProfile();
+        } else if (targetId === 'permissions-panel') {
+            stopMemoryMonitor();
+            runPermissionsAudit(false, true, true);
         } else {
             stopMemoryMonitor();
         }
@@ -256,10 +259,17 @@ window.addEventListener('pywebviewready', () => {
     loadDashboardRam();
     refreshDiskUsage();
 
-    // Proactively check required macOS permissions on launch so the user is
-    // pointed at the right Settings pane before a feature fails deep in a
-    // scan. Backgrounded: no loader, never blocks the rest of the UI.
-    runPermissionsAudit(false);
+    // Proactively check Full Disk Access on launch (a passive filesystem
+    // probe, no side effects) so the Dashboard banner can point the user at
+    // the right Settings pane. Automation (Finder/System Events) is
+    // deliberately NOT checked here: that check sends a real AppleEvent, and
+    // doing so unprompted in the background could collide with a real
+    // Finder action the user triggers right after opening the app (e.g.
+    // Esvaziar Lixeira), which can make macOS report the real action as
+    // cancelled. Automation is only checked when the user opens the
+    // Permissões tab or clicks "Verificar Novamente" — a deliberate moment
+    // with no other Finder/System Events call in flight.
+    runPermissionsAudit(false, false, false);
 
     // Bind Scan and Action Buttons
     bindButtons();
@@ -1416,17 +1426,16 @@ async function openSecuritySetting(checkId) {
 }
 
 // ==================== PERMISSIONS PANEL ====================
-async function runPermissionsAudit(showSpinner) {
-    const summary = document.getElementById('permissions-summary');
+async function runPermissionsAudit(showSpinner, includeAutomation = true, updatePanel = true) {
     const checksContainer = document.getElementById('permissions-checks');
     if (showSpinner) showLoader('Verificando permissões do macOS...');
     try {
-        const report = await window.pywebview.api.run_permissions_audit();
-        renderPermissionsReport(report);
+        const report = await window.pywebview.api.run_permissions_audit(includeAutomation);
+        if (updatePanel) renderPermissionsReport(report);
         updatePermissionsBanner(report);
         return report;
     } catch (err) {
-        if (checksContainer) {
+        if (updatePanel && checksContainer) {
             checksContainer.innerHTML = `<div class="security-placeholder glass">${escapeHtml(err.message || err)}</div>`;
         }
         return null;

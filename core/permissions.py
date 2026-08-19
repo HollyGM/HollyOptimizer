@@ -14,9 +14,15 @@ apenas mede o estado atual e, no caso da Automação, o próprio teste
 primeira vez — depois disso o sistema lembra a decisão do usuário.
 """
 
+import contextlib
 import os
 
-from .utils import run_command
+from .utils import FINDER_AUTOMATION_LOCK, SYSTEM_EVENTS_AUTOMATION_LOCK, run_command
+
+_TARGET_LOCKS = {
+    "automation_finder": FINDER_AUTOMATION_LOCK,
+    "automation_system_events": SYSTEM_EVENTS_AUTOMATION_LOCK,
+}
 
 # Full Disk Access não expõe uma API de leitura de status: o único sinal
 # confiável é tentar acessar um local que o TCC protege mesmo para o próprio
@@ -79,7 +85,11 @@ def check_automation(target_key: str) -> bool | None:
     spec = AUTOMATION_TARGETS.get(target_key)
     if not spec:
         return None
-    code, _stdout, stderr = run_command(["/usr/bin/osascript", "-e", spec["script"]], timeout=15)
+    lock = _TARGET_LOCKS.get(target_key) or contextlib.nullcontext()
+    with lock:
+        code, _stdout, stderr = run_command(
+            ["/usr/bin/osascript", "-e", spec["script"]], timeout=15
+        )
     if code == 0:
         return True
     normalized = (stderr or "").casefold()
@@ -107,8 +117,21 @@ def _entry(check_id: str, name: str, reason: str, granted: bool | None) -> dict:
     }
 
 
-def run_permissions_audit() -> dict:
-    """Verifica Acesso Total ao Disco e as duas autorizações de Automação usadas pelo app."""
+def run_permissions_audit(include_automation: bool = True) -> dict:
+    """
+    Verifica Acesso Total ao Disco e, opcionalmente, as duas autorizações de
+    Automação usadas pelo app.
+
+    `include_automation=False` mantém a checagem só com o Acesso Total ao
+    Disco (um probe passivo, sem nenhum AppleEvent). Isso existe porque testar
+    Automação de verdade ENVIA um AppleEvent ao Finder/System Events, o mesmo
+    canal que "Esvaziar Lixeira" usa — disparar isso sozinho, sem contexto, a
+    cada abertura do app, podia colidir com uma ação real do usuário logo em
+    seguida (ex.: clicar em Esvaziar Lixeira assim que o app abre) e fazer o
+    macOS reportar a ação real como cancelada. Por isso a Automação só é
+    testada quando o usuário abre a aba Permissões ou pede para verificar de
+    novo — um gesto deliberado, não algo em segundo plano.
+    """
     checks = [
         _entry(
             "full_disk_access",
@@ -118,8 +141,9 @@ def run_permissions_audit() -> dict:
             check_full_disk_access(),
         )
     ]
-    for key, spec in AUTOMATION_TARGETS.items():
-        checks.append(_entry(key, spec["name"], spec["reason"], check_automation(key)))
+    if include_automation:
+        for key, spec in AUTOMATION_TARGETS.items():
+            checks.append(_entry(key, spec["name"], spec["reason"], check_automation(key)))
 
     attention = sum(check["status"] == "attention" for check in checks)
     unknown = sum(check["status"] == "unknown" for check in checks)

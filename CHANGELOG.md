@@ -9,6 +9,14 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 - Empacotamento público assinado e notarizado para distribuição fora da máquina de desenvolvimento.
 
+## [0.7.1] - 2026-08-18
+
+### Corrigido
+
+- **Esvaziar Lixeira podia falhar com "Operação cancelada na autenticação do macOS"** logo após abrir o app, ou às vezes de forma intermitente. Causa: a nova checagem automática de Permissões (0.7.0) enviava um AppleEvent real ao Finder a cada abertura do app, o mesmo canal usado por Esvaziar Lixeira; se o usuário clicasse em Esvaziar enquanto essa checagem ainda estava em andamento, os dois pedidos concorrentes podiam colidir e o macOS reportava a ação real como cancelada.
+  - A checagem automática ao abrir o app agora verifica **somente** Acesso Total ao Disco (um probe passivo, sem AppleEvent). Automação (Finder/System Events) só é testada quando o usuário abre a aba Permissões ou clica em "Verificar Novamente" — um gesto deliberado.
+  - Toda chamada de Automação ao Finder ou ao System Events (Esvaziar Lixeira, itens de início de sessão, e a própria checagem de Permissões) agora é serializada por um lock dedicado por aplicativo-alvo, para que duas nunca corram ao mesmo tempo mesmo em cliques rápidos.
+
 ## [0.7.0] - 2026-08-18
 
 ### Adicionado
@@ -45,6 +53,7 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Build nativo para Apple Silicon com suporte opcional a `universal2`.
 - Dependências atualizadas e fixadas para builds reproduzíveis.
 
-[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.0...HEAD
+[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/HollyGM/HollyOptimizer/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/HollyGM/HollyOptimizer/releases/tag/v0.6.2

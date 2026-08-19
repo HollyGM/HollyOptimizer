@@ -280,8 +280,10 @@ class JsApi:
     def open_security_setting(self, check_id: str) -> tuple:
         return open_security_setting(check_id)
 
-    def run_permissions_audit(self) -> dict:
-        return _run_heavy("permissions_audit", run_permissions_audit)
+    def run_permissions_audit(self, include_automation: bool = True) -> dict:
+        return _run_heavy(
+            "permissions_audit", run_permissions_audit, bool(include_automation)
+        )
 
     def open_permission_setting(self, check_id: str) -> tuple:
         return open_permission_setting(check_id)

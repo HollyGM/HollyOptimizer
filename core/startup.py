@@ -3,7 +3,12 @@ import shlex
 import threading
 
 from .diagnostics import record_issue
-from .utils import read_plist, run_authorized_command, run_command
+from .utils import (
+    SYSTEM_EVENTS_AUTOMATION_LOCK,
+    read_plist,
+    run_authorized_command,
+    run_command,
+)
 from .version import APP_NAME
 
 _SCAN_LOCK = threading.RLock()
@@ -111,7 +116,8 @@ def _scan_login_items() -> list[dict]:
         'return output\n'
         'end tell'
     )
-    code, stdout, stderr = run_command(["/usr/bin/osascript", "-e", script], timeout=30)
+    with SYSTEM_EVENTS_AUTOMATION_LOCK:
+        code, stdout, stderr = run_command(["/usr/bin/osascript", "-e", script], timeout=30)
     if code != 0:
         # Automation permission denied, or System Events unavailable. The rest
         # of the scan stays useful, so this is reported and not raised.
@@ -250,7 +256,8 @@ def remove_login_item(name: str) -> tuple[bool, str]:
         'tell application "System Events" to delete login item (item 1 of argv)\n'
         "end run"
     )
-    code, _, stderr = run_command(["/usr/bin/osascript", "-e", script, name], timeout=30)
+    with SYSTEM_EVENTS_AUTOMATION_LOCK:
+        code, _, stderr = run_command(["/usr/bin/osascript", "-e", script, name], timeout=30)
     if code == 0:
         with _SCAN_LOCK:
             _LAST_LOGIN_ITEMS.pop(name, None)
