@@ -28,6 +28,7 @@ EXCLUDED_EXTENSIONS = {'.app', '.dmg', '.pkg', '.iso', '.vmdk', '.sparseimage',
                        '.sqlite', '.sqlite3', '.sqlitedb', '.db', '.keychain-db'}
 
 _SCAN_LOCK = threading.RLock()
+_DELETE_LOCK = threading.RLock()
 _LAST_SCAN_GROUPS = {}
 
 
@@ -305,6 +306,14 @@ def delete_duplicate_files(selections: list[dict]) -> dict:
     Safely removes duplicate selections produced by the most recent scan.
     Every group must keep at least one revalidated file.
     """
+    # Concurrent selections can name opposite copies of the same group. Keep
+    # the full validation and move sequence exclusive so each call observes
+    # the removals completed by the preceding one before choosing its keeper.
+    with _DELETE_LOCK:
+        return _delete_duplicate_files(selections)
+
+
+def _delete_duplicate_files(selections: list[dict]) -> dict:
     result = {"bytes_freed": 0, "deleted": 0, "errors": []}
     if not isinstance(selections, list):
         result["errors"].append("Seleção de duplicados inválida.")
@@ -367,6 +376,17 @@ def delete_duplicate_files(selections: list[dict]) -> dict:
             continue
 
         for path in sorted(targets):
+            # Hashing the selected copies may take minutes. The preserved
+            # copy must still exist and be unchanged when the move occurs.
+            try:
+                for keeper in sorted(keepers):
+                    _verify_unchanged(keeper, group["files"][keeper])
+            except (OSError, ValueError) as exc:
+                result["errors"].append(
+                    f"Cópia preservada mudou durante a operação, grupo interrompido: {exc}"
+                )
+                break
+
             previous = snapshots[path]
             try:
                 if _identity(path) != (
@@ -393,6 +413,17 @@ def delete_duplicate_files(selections: list[dict]) -> dict:
             if success:
                 result["bytes_freed"] += previous["disk_bytes"]
                 result["deleted"] += 1
+                with _SCAN_LOCK:
+                    current_group = _LAST_SCAN_GROUPS.get(group_hash)
+                    # A parallel scan may have refreshed the registry. Only
+                    # consume the registration for the exact file we moved.
+                    if (
+                        current_group
+                        and current_group["files"].get(path) == group["files"].get(path)
+                    ):
+                        current_group["files"].pop(path, None)
+                        if len(current_group["files"]) < 2:
+                            _LAST_SCAN_GROUPS.pop(group_hash, None)
             else:
                 result["errors"].append(message)
 

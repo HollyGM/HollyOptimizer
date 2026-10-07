@@ -1,13 +1,17 @@
 import contextlib
 import io
+import json
 import os
 import struct
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from pathlib import Path
 from unittest import mock
 
 from core import (
+    ai_assistant,
     apps,
     browser_cleaner,
     dependencies,
@@ -110,6 +114,13 @@ class PathPolicyTests(unittest.TestCase):
             self.assertFalse(
                 utils.is_safe_scan_candidate(temp_dir, require_user_owned=True)
             )
+
+    def test_application_scripts_children_are_allowed_but_root_is_protected(self):
+        root = os.path.expanduser("~/Library/Application Scripts")
+        self.assertFalse(utils.is_safe_to_delete(root))
+        self.assertTrue(
+            utils.is_safe_to_delete(os.path.join(root, "com.example.thirdparty"))
+        )
 
 
 class ScannerSafetyTests(unittest.TestCase):
@@ -231,6 +242,52 @@ class ScannerSafetyTests(unittest.TestCase):
             self.assertEqual(trash.call_count, 1)
             self.assertEqual(trash.call_args.args[0], str(first))
             self.assertTrue(trash.call_args.kwargs["allow_content_changes"])
+
+    def test_junk_scan_rejects_candidate_with_document_package_descendant(self):
+        cache_parent = os.path.expanduser("~/Library/Caches")
+        with tempfile.TemporaryDirectory(dir=cache_parent) as temp_dir:
+            candidate = Path(temp_dir, "com.example.cache")
+            package = candidate / "Important.pages"
+            package.mkdir(parents=True)
+            (package / "document.bin").write_bytes(b"user document")
+            target = {
+                "name": "Teste",
+                "description": "Teste",
+                "roots": [temp_dir],
+                "cleanable": True,
+            }
+
+            with mock.patch.dict(junk.JUNK_TARGETS, {"test": target}, clear=True):
+                result = junk.scan_junk()
+
+            self.assertEqual(result["test"]["size_bytes"], 0)
+            with junk._SCAN_LOCK:
+                self.assertEqual(junk._LAST_SCAN_ITEMS["test"], {})
+
+    def test_junk_clean_rejects_protected_content_added_after_scan(self):
+        cache_parent = os.path.expanduser("~/Library/Caches")
+        with tempfile.TemporaryDirectory(dir=cache_parent) as temp_dir:
+            candidate = Path(temp_dir, "com.example.cache")
+            candidate.mkdir()
+            (candidate / "temporary.bin").write_bytes(b"temporary")
+            target = {
+                "name": "Teste",
+                "description": "Teste",
+                "roots": [temp_dir],
+                "cleanable": True,
+            }
+
+            with mock.patch.dict(junk.JUNK_TARGETS, {"test": target}, clear=True):
+                junk.scan_junk()
+                package = candidate / "Important.pages"
+                package.mkdir()
+                (package / "document.bin").write_bytes(b"user document")
+                with mock.patch.object(junk, "move_to_trash") as trash:
+                    cleaned = junk.clean_target("test")
+
+            self.assertEqual(cleaned["moved"], 0)
+            self.assertEqual(cleaned["failed"], 1)
+            trash.assert_not_called()
 
     def test_scanners_prune_macos_document_packages(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -407,13 +464,10 @@ class BrowserCacheSafetyTests(unittest.TestCase):
 
     def test_cleaner_allows_ordinary_cache_writes_between_scan_and_clean(self):
         """
-        A cache whose contents changed after the scan is still cleanable.
+        Exercise the real Trash policy with a stub for only the native move.
 
-        The previous implementation snapshotted every descendant's mtime and
-        refused the whole item when any of them moved, which is the normal
-        state of a cache and blocked legitimate cleanups. The guarantees that
-        actually matter are asserted by the two tests below: the root identity
-        is revalidated, and the full safety gate is re-run over the subtree.
+        Both a changed file and a directory with newly created cache entries
+        remain eligible when their device, inode and file type stay unchanged.
         """
         cache_parent = os.path.expanduser("~/Library/Caches")
         with tempfile.TemporaryDirectory(dir=cache_parent) as cache_root:
@@ -421,6 +475,8 @@ class BrowserCacheSafetyTests(unittest.TestCase):
             scanned.mkdir()
             content = scanned / "entry.bin"
             content.write_bytes(b"before")
+            direct_file = Path(cache_root, "cache.bin")
+            direct_file.write_bytes(b"before")
             target = self._target(cache_root)
 
             with mock.patch.dict(
@@ -429,16 +485,35 @@ class BrowserCacheSafetyTests(unittest.TestCase):
                 browser_cleaner, "_browser_is_running", return_value=False
             ):
                 browser_cleaner.scan_browser_caches()
+                directory_identity = utils.snapshot_path_identity(str(scanned))
+                file_identity = utils.snapshot_path_identity(str(direct_file))
                 content.write_bytes(b"changed content after the scan")
-                with mock.patch.object(
-                    browser_cleaner, "move_to_trash", return_value=(True, "ok")
-                ) as trash:
+                (scanned / "new-entry.bin").write_bytes(b"new cache entry")
+                direct_file.write_bytes(b"changed direct cache file")
+                # Make the directory mtime change deterministic even on a
+                # filesystem whose timestamp resolution is coarser than writes.
+                os.utime(
+                    scanned,
+                    ns=(directory_identity[4] + 1_000_000, directory_identity[4] + 1_000_000),
+                )
+                self.assertFalse(utils.path_identity_matches(str(scanned), directory_identity))
+                self.assertFalse(utils.path_identity_matches(str(direct_file), file_identity))
+
+                foundation = mock.Mock()
+                native_trash = (
+                    foundation.NSFileManager.defaultManager.return_value
+                    .trashItemAtURL_resultingItemURL_error_
+                )
+                native_trash.return_value = (True, None, None)
+                with mock.patch.dict("sys.modules", {"Foundation": foundation}):
                     result = browser_cleaner.clean_browser_cache("test")
 
-            self.assertEqual(result["moved"], 1)
+            self.assertEqual(result["moved"], 2)
             self.assertEqual(result["failed"], 0)
-            trash.assert_called_once()
-            self.assertEqual(trash.call_args.args[0], os.path.realpath(scanned))
+            self.assertEqual(result["files_moved"], 3)
+            self.assertEqual(native_trash.call_count, 2)
+            self.assertTrue(scanned.exists())
+            self.assertTrue(direct_file.exists())
 
     def test_cleaner_rejects_symlink_planted_after_scan(self):
         """A link introduced between scan and clean must fail the item closed."""
@@ -489,6 +564,23 @@ class BrowserCacheSafetyTests(unittest.TestCase):
                 self.assertEqual(
                     identity, utils.snapshot_path_identity(str(scanned))
                 )
+                scanned.rename(Path(cache_root, "original-cache"))
+                scanned.mkdir()
+                (scanned / "entry.bin").write_bytes(b"replacement cache")
+
+                foundation = mock.Mock()
+                native_trash = (
+                    foundation.NSFileManager.defaultManager.return_value
+                    .trashItemAtURL_resultingItemURL_error_
+                )
+                with mock.patch.dict("sys.modules", {"Foundation": foundation}):
+                    result = browser_cleaner.clean_browser_cache("test")
+
+            self.assertEqual(result["moved"], 0)
+            self.assertEqual(result["failed"], 1)
+            self.assertIn("mudou desde a varredura", result["errors"][0])
+            native_trash.assert_not_called()
+            self.assertTrue(scanned.exists())
 
     def test_cleaner_requires_browser_to_be_closed(self):
         cache_parent = os.path.expanduser("~/Library/Caches")
@@ -653,6 +745,34 @@ class DependencySafetyTests(unittest.TestCase):
         self.assertEqual(located, "/opt/homebrew/bin/brew")
 
 
+class AiSummarySafetyTests(unittest.TestCase):
+    def _summarize(self, facts: str, summary: str) -> dict:
+        helper_result = mock.Mock(
+            stdout=json.dumps({"available": True, "summary": summary}),
+            stderr="",
+            returncode=0,
+        )
+        with mock.patch.object(ai_assistant.platform, "machine", return_value="arm64"), mock.patch.object(
+            ai_assistant, "_locate_binary", return_value="/tmp/hollyoptimizer-ai"
+        ), mock.patch.object(ai_assistant.subprocess, "run", return_value=helper_result):
+            return ai_assistant.summarize(facts)
+
+    def test_ai_summary_accepts_exact_numeric_facts(self):
+        result = self._summarize(
+            "Há 2 itens usando 1.25 GB e 0 sobras.",
+            "Foram encontrados 2 itens, totalizando 1,25 GB, e 0 sobras.",
+        )
+        self.assertTrue(result["available"])
+
+    def test_ai_summary_rejects_changed_or_omitted_numeric_facts(self):
+        changed = self._summarize(
+            "Há 2 itens usando 1.25 GB e 0 sobras.",
+            "Foram encontrados 3 itens usando 1.25 GB.",
+        )
+        self.assertFalse(changed["available"])
+        self.assertEqual(changed["reason"], "numeric_facts_changed")
+
+
 class DuplicateSafetyTests(unittest.TestCase):
     def _scan_group(self, temp_dir: str, count: int = 2):
         paths = []
@@ -683,6 +803,67 @@ class DuplicateSafetyTests(unittest.TestCase):
             self.assertEqual(result["deleted"], 1)
             self.assertFalse(result["errors"])
             trash.assert_called_once()
+
+    def test_concurrent_opposite_selections_preserve_one_copy(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            group, paths = self._scan_group(temp_dir)
+            first_move_started = threading.Event()
+            second_call_started = threading.Event()
+            finish_first_move = threading.Event()
+
+            def simulate_trash(path, **kwargs):
+                if path == os.path.realpath(paths[0]):
+                    first_move_started.set()
+                    if not finish_first_move.wait(timeout=5):
+                        raise RuntimeError("A segunda chamada não foi iniciada.")
+                return True, "Movimentação nativa simulada; arquivos preservados."
+
+            def remove_copy(index):
+                if index == 1:
+                    second_call_started.set()
+                return duplicates.delete_duplicate_files(
+                    [{"hash": group["hash"], "path": str(paths[index])}]
+                )
+
+            with mock.patch.object(
+                duplicates, "move_to_trash", side_effect=simulate_trash
+            ) as trash, ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(remove_copy, 0)
+                try:
+                    self.assertTrue(first_move_started.wait(timeout=5))
+                    second = pool.submit(remove_copy, 1)
+                    self.assertTrue(second_call_started.wait(timeout=5))
+                    with self.assertRaises(FutureTimeoutError):
+                        second.result(timeout=0.05)
+                finally:
+                    finish_first_move.set()
+                results = [first.result(timeout=5), second.result(timeout=5)]
+
+            self.assertEqual(sum(result["deleted"] for result in results), 1)
+            self.assertEqual(sum(bool(result["errors"]) for result in results), 1)
+            trash.assert_called_once()
+            self.assertTrue(all(path.exists() for path in paths))
+
+    def test_keeper_changed_while_selected_copy_is_hashed_blocks_removal(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            group, paths = self._scan_group(temp_dir)
+            snapshot_file = duplicates._snapshot_file
+
+            def change_keeper_after_hash(*args):
+                snapshot = snapshot_file(*args)
+                paths[0].write_text("keeper changed during hashing", encoding="utf-8")
+                return snapshot
+
+            with mock.patch.object(
+                duplicates, "_snapshot_file", side_effect=change_keeper_after_hash
+            ), mock.patch.object(duplicates, "move_to_trash") as trash:
+                result = duplicates.delete_duplicate_files(
+                    [{"hash": group["hash"], "path": str(paths[1])}]
+                )
+
+            self.assertEqual(result["deleted"], 0)
+            self.assertTrue(any("preservada mudou" in error for error in result["errors"]))
+            trash.assert_not_called()
 
     def test_backend_refuses_file_changed_after_scan(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -748,6 +929,38 @@ class UninstallerSafetyTests(unittest.TestCase):
         ok, logs = uninstaller.uninstall_app("/Applications/Unknown.app", [])
         self.assertFalse(ok)
         self.assertIn("listagem", logs[0])
+
+    def test_related_files_use_only_registered_app_name(self):
+        app_path = "/Applications/Example.app"
+        with tempfile.TemporaryDirectory(
+            dir=os.path.expanduser("~/Library/Caches")
+        ) as temp_dir:
+            expected = Path(temp_dir, "Example")
+            unrelated = Path(temp_dir, "Unrelated Data")
+            expected.mkdir()
+            unrelated.mkdir()
+            (expected / "cache.bin").write_bytes(b"cache")
+            (unrelated / "important.bin").write_bytes(b"keep")
+
+            with uninstaller._REGISTRY_LOCK:
+                uninstaller._LAST_LISTED_APPS.clear()
+                uninstaller._RELATED_BY_APP.clear()
+                uninstaller._LAST_LISTED_APPS[app_path] = {
+                    "path": app_path,
+                    "bundle_id": "com.example.app",
+                    "name": "Example",
+                }
+
+            with mock.patch.object(
+                uninstaller,
+                "LIBRARY_DIRS",
+                [{"dir": temp_dir, "type": "support"}],
+            ):
+                related = uninstaller.get_app_related_files(
+                    app_path, "com.example.app"
+                )
+
+        self.assertEqual([item["name"] for item in related], ["Example"])
 
     def test_uninstall_retries_with_admin_after_permission_failure(self):
         app_path = "/Applications/ThirdParty.app"
@@ -940,6 +1153,18 @@ class OperationalSafetyTests(unittest.TestCase):
         source = app_js.read_text(encoding="utf-8")
         self.assertNotIn("showCustomConfirm(", source)
         self.assertIn("const confirmed = await showConfirm(", source)
+
+    def test_dynamic_html_escapes_attribute_quotes_and_blocks_inline_scripts(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "gui" / "app.js").read_text(encoding="utf-8")
+        html = (root / "gui" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn(".replace(/\"/g, '&quot;')", source)
+        self.assertIn(".replace(/'/g, '&#39;')", source)
+        self.assertNotIn("onclick=", source)
+        self.assertNotIn("onclick=", html)
+        self.assertIn("Content-Security-Policy", html)
+        self.assertIn("script-src 'self'", html)
 
     def test_self_test_reports_missing_gui_assets_without_crashing(self):
         with tempfile.TemporaryDirectory() as resource_root, mock.patch.object(

@@ -12,6 +12,7 @@ from core.version import (  # noqa: E402
     BUILD,
     VERSION,
 )
+from tools.macos_target import minimum_macos_version  # noqa: E402
 
 _icon = 'HollyOptimizer.icns' if os.path.exists('HollyOptimizer.icns') else None
 _target_arch = os.environ.get('HOLLYOPTIMIZER_TARGET_ARCH') or None
@@ -19,11 +20,6 @@ _codesign_identity = os.environ.get('CODESIGN_IDENTITY') or None
 
 _datas = [('gui', 'gui'), ('hollyoptimizer_app_icon.png', '.')]
 _ai_helper = os.path.join('tools', 'ai_summary', 'hollyoptimizer-ai')
-if os.path.isfile(_ai_helper):
-    # Optional on-device Apple Intelligence helper (Foundation Models). Built
-    # separately by build.sh only on Apple Silicon; harmless to omit — the
-    # app already falls back to a deterministic summary when it is missing.
-    _datas.append((_ai_helper, 'ai'))
 
 a = Analysis(
     ['hollyoptimizer_gui.py'],
@@ -38,6 +34,16 @@ a = Analysis(
     noarchive=False,
     optimize=1,
 )
+if os.path.isfile(_ai_helper):
+    # Add after Analysis: otherwise PyInstaller reclassifies this standalone
+    # executable as a mandatory BINARY, imposing its OS/architecture target.
+    # build.sh signs it explicitly; unsupported Macs use the app's fallback.
+    a.datas.append(('ai/hollyoptimizer-ai', os.path.abspath(_ai_helper), 'DATA'))
+# The app's Python runtime and extensions may target a newer macOS than the
+# source-code floor. The optional Swift helper is in a.datas and does not raise
+# the application's minimum version; unsupported hosts use its fallback.
+_minimum_macos = minimum_macos_version(a.binaries, code_minimum='12.0')
+print(f'Minimum macOS for the collected runtime: {_minimum_macos}')
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -76,7 +82,7 @@ app = BUNDLE(
         'CFBundleDisplayName': APP_NAME,
         'CFBundleShortVersionString': VERSION,
         'CFBundleVersion': str(BUILD),
-        'LSMinimumSystemVersion': '12.0',
+        'LSMinimumSystemVersion': _minimum_macos,
         'NSHighResolutionCapable': True,
         'NSAppleEventsUsageDescription': f'{APP_NAME} usa automação do Finder para esvaziar a Lixeira e do System Events para listar e remover itens de início de sessão. A autenticação administrativa é solicitada apenas em operações de sistema explícitas.',
     },

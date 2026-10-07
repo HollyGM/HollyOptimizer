@@ -218,9 +218,9 @@ class JsApi:
         _validate_app_path(app_path)
         return get_app_icon_base64(app_path, bundle_id)
 
-    def get_app_related_files(self, app_path: str, bundle_id: str, app_name: str) -> list:
+    def get_app_related_files(self, app_path: str, bundle_id: str) -> list:
         _validate_app_path(app_path)
-        return get_app_related_files(app_path, bundle_id, app_name)
+        return get_app_related_files(app_path, bundle_id)
 
     def uninstall_app(self, app_path: str, related_paths: list) -> tuple:
         _validate_app_path(app_path)

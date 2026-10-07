@@ -208,10 +208,11 @@ def get_app_icon_base64(app_path: str, bundle_id: str) -> str:
         icon_path = extract_app_icon(registered["path"], registered["bundle_id"])
         return get_image_base64(icon_path)
 
-def get_app_related_files(app_path: str, bundle_id: str, app_name: str) -> list[dict]:
+def get_app_related_files(app_path: str, bundle_id: str) -> list[dict]:
     """
     Finds all support files in ~/Library associated with the app.
-    Matches against bundle_id and app_name.
+    Matches against the bundle identifier and display name captured by the
+    latest trusted application listing.
     """
     registered = _registered_app(app_path)
     if not registered or registered.get("bundle_id") != bundle_id:
@@ -219,11 +220,12 @@ def get_app_related_files(app_path: str, bundle_id: str, app_name: str) -> list[
 
     app_path = registered["path"]
     bundle_id = registered["bundle_id"]
+    app_name = registered.get("name", "")
     related_files = []
     
     # Normalize keys
     b_id = bundle_id.lower() if bundle_id else ""
-    a_name = app_name.lower() if app_name else ""
+    a_name = app_name.lower() if isinstance(app_name, str) else ""
 
     for lib in LIBRARY_DIRS:
         base_dir = lib["dir"]

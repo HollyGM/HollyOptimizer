@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- PyWebView builds its typed bridge with Function(), so unsafe-eval is
+         required. Inline script/event handlers remain blocked. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'">
     <title>HollyOptimizer</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -137,28 +140,28 @@
                             <span class="stat-icon">🧹</span>
                             <div class="stat-info">
                                 <span class="stat-label">Lixo do Sistema</span>
-                                <span id="dash-junk-size" class="stat-val">Carregando...</span>
+                                <span id="dash-junk-size" class="stat-val">Não analisado</span>
                             </div>
                         </div>
                     <div class="stat-card glass hover-effect" data-nav="leftovers-panel" role="button" tabindex="0">
                             <span class="stat-icon">🗑️</span>
                             <div class="stat-info">
                                 <span class="stat-label">Sobras de Apps</span>
-                                <span id="dash-leftovers-count" class="stat-val">Carregando...</span>
+                                <span id="dash-leftovers-count" class="stat-val">Não analisado</span>
                             </div>
                         </div>
                     <div class="stat-card glass hover-effect" data-nav="startup-panel" role="button" tabindex="0">
                             <span class="stat-icon">🚀</span>
                             <div class="stat-info">
                                 <span class="stat-label">Itens Inicialização</span>
-                                <span id="dash-startup-count" class="stat-val">Carregando...</span>
+                                <span id="dash-startup-count" class="stat-val">Não analisado</span>
                             </div>
                         </div>
                     <div class="stat-card glass hover-effect" data-nav="network-panel" role="button" tabindex="0">
                             <span class="stat-icon">⚡</span>
                             <div class="stat-info">
                                 <span class="stat-label">Status da Conexão</span>
-                                <span id="dash-network-status" class="stat-val">Carregando...</span>
+                                <span id="dash-network-status" class="stat-val">Não verificado</span>
                             </div>
                         </div>
                     <div class="stat-card glass hover-effect" data-nav="memory-panel" role="button" tabindex="0">
@@ -498,8 +501,8 @@
                             <thead>
                                 <tr>
                                     <th width="5%"><input type="checkbox" id="dup-select-all" aria-label="Selecionar todas as cópias removíveis"></th>
-                                    <th width="30%" data-sort="name">Nome do Arquivo <span class="sort-icon">▼</span></th>
-                                    <th width="12%" data-sort="size">Tamanho <span class="sort-icon">▼</span></th>
+                                    <th width="30%" data-sort="name" title="Ordenar conjuntos pelo nome da cópia preservada">Nome do Arquivo <span class="sort-icon">▼</span></th>
+                                    <th width="12%" data-sort="size" title="Ordenar conjuntos pelo tamanho de cada cópia">Tamanho <span class="sort-icon">▼</span></th>
                                     <th width="15%">Última Modificação</th>
                                     <th>Caminho do Arquivo</th>
                                 </tr>

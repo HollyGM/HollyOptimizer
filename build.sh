@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+cd "$PROJECT_ROOT"
+
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 RELEASE_MODE="${HOLLYOPTIMIZER_RELEASE:-0}"
 
@@ -18,8 +21,7 @@ if [ "$RELEASE_MODE" = "1" ]; then
 fi
 
 TARGET_ARCH="${HOLLYOPTIMIZER_TARGET_ARCH:-$HOST_ARCH}"
-
-
+export HOLLYOPTIMIZER_TARGET_ARCH="$TARGET_ARCH"
 
 "$PYTHON_BIN" -c "import PyInstaller, webview, objc, Foundation, AppKit" || {
     echo "❌ Dependências ausentes para $PYTHON_BIN. Instale requirements.txt nesse ambiente."
@@ -36,13 +38,13 @@ echo "=========================================="
 VERSION_INFO="$("$PYTHON_BIN" -c 'from core.version import VERSION_STRING; print(VERSION_STRING)')"
 echo "📈 Versão: $VERSION_INFO"
 
-echo "🧹 Limpando artefatos de compilações anteriores..."
-rm -rf build dist
-
 if [ ! -f "HollyOptimizer.spec" ]; then
     echo "❌ HollyOptimizer.spec não encontrado. Abortando."
     exit 1
 fi
+
+echo "🧹 Limpando artefatos de compilações anteriores..."
+rm -rf build dist
 
 if [ ! -f "HollyOptimizer.icns" ]; then
     echo "⚠️  HollyOptimizer.icns não encontrado — compile sem ícone ou adicione o arquivo."
@@ -86,11 +88,11 @@ echo "🏗️  Arquitetura gerada: $ARCHS (alvo: $TARGET_ARCH)"
 if [ "$TARGET_ARCH" = "universal2" ]; then
     if [[ "$ARCHS" != *"arm64"* || "$ARCHS" != *"x86_64"* ]]; then
         echo "❌ Alvo universal2 pedido, mas o binário saiu como: $ARCHS"
-        [ "$RELEASE_MODE" = "1" ] && exit 1
+        exit 1
     fi
-elif [[ "$ARCHS" != *"$TARGET_ARCH"* ]]; then
+elif [ "$ARCHS" != "$TARGET_ARCH" ]; then
     echo "❌ Alvo $TARGET_ARCH pedido, mas o binário saiu como: $ARCHS"
-    [ "$RELEASE_MODE" = "1" ] && exit 1
+    exit 1
 elif [ "$TARGET_ARCH" = "arm64" ]; then
     echo "✓ Build nativo Apple Silicon — sem tradução por Rosetta 2."
 fi

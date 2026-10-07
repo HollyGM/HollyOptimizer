@@ -13,7 +13,7 @@ from core.large_files import delete_large_file, scan_large_files
 from core.memory import get_memory_stats, get_top_ram_processes, kill_process
 from core.network import flush_dns, run_network_diagnostic
 from core.security_audit import run_security_audit
-from core.startup import scan_startup, toggle_startup_item
+from core.startup import remove_login_item, scan_startup, toggle_startup_item
 from core.uninstaller import get_app_related_files, list_installed_apps, uninstall_app
 from core.utils import Colors, format_size
 from core.version import APP_NAME
@@ -73,7 +73,10 @@ def menu_browser_caches():
     if not choice:
         return
     try:
-        key, data = available[int(choice) - 1]
+        index = int(choice) - 1
+        if not 0 <= index < len(available):
+            raise ValueError("Número fora da lista")
+        key, data = available[index]
     except (ValueError, IndexError):
         print(f"{Colors.FAIL}Opção inválida.{Colors.ENDC}")
         return
@@ -354,7 +357,8 @@ def menu_startup():
             print("-" * 100)
 
         print(f"\n{Colors.BOLD}Instruções:{Colors.ENDC}")
-        print("  - Digite o número do item para ALTERNAR o estado (Ativar <-> Desativar).")
+        print("  - Digite o número de um serviço para alternar seu estado (Ativar <-> Desativar).")
+        print("  - Itens de início de sessão podem ser removidos da lista após confirmação.")
         print("  - Pressione Enter para voltar ao menu principal.")
 
         user_input = input("\nEscolha uma opção: ").strip()
@@ -365,6 +369,19 @@ def menu_startup():
             idx = int(user_input) - 1
             if 0 <= idx < len(items):
                 target = items[idx]
+                if target.get("kind") == "login_item":
+                    confirm = input(
+                        f"Remover '{target['label']}' dos itens de início de sessão? "
+                        "O aplicativo será preservado. (s/N): "
+                    ).strip().lower()
+                    if confirm != "s":
+                        continue
+                    success, msg = remove_login_item(target["label"])
+                    color = Colors.GREEN if success else Colors.FAIL
+                    symbol = "✓" if success else "✗"
+                    print(f"\n{color}{symbol} {msg}{Colors.ENDC}")
+                    input("\nPressione Enter para atualizar a lista...")
+                    continue
                 action_desc = "ativar" if target["is_disabled"] else "desativar"
 
                 if target["sudo_required"] and os.geteuid() != 0:
@@ -655,7 +672,7 @@ def menu_uninstaller():
     print(f"\n{Colors.BOLD}Analisando: {app['name']} v{app['version']} ({app['size_human']}){Colors.ENDC}")
     print(f"{Colors.GRAY}Buscando arquivos de suporte relacionados...{Colors.ENDC}")
 
-    related = get_app_related_files(app["path"], app["bundle_id"], app["name"])
+    related = get_app_related_files(app["path"], app["bundle_id"])
 
     if related:
         related_size = sum(r["size_bytes"] for r in related)

@@ -91,16 +91,20 @@ function startOperationTracking(operation) {
     trackedOperationButton = document.getElementById(buttonByOperation[operation]);
     if (trackedOperationButton) trackedOperationButton.disabled = true;
     loaderProgress.hidden = false;
+    loaderProgress.textContent = 'Iniciando varredura…';
     cancelOperationBtn.hidden = false;
     const refresh = async () => {
         if (activeOperation !== operation) return;
         try {
             const state = await window.pywebview.api.get_operation_progress(operation);
             if (activeOperation !== operation) return;
+            // The worker may still be queued, leaving the previous scan's
+            // completed snapshot visible. Only the main scan promise knows
+            // when this run has finished; its finally block releases tracking.
+            if (!state.active) return;
             loaderProgress.textContent = state.processed > 0
                 ? `${state.message} · ${state.processed}`
                 : state.message;
-            if (!state.active && state.message) stopOperationTracking();
         } catch (_) {
             // The main operation remains authoritative if progress polling fails.
         }
@@ -151,9 +155,15 @@ function hideLoader() {
 // ==================== DIALOG & HTML SAFETY ====================
 function escapeHtml(str) {
     if (str == null) return '';
-    const div = document.createElement('div');
-    div.textContent = String(str);
-    return div.innerHTML;
+    // This helper is used in both text nodes and quoted HTML attributes.
+    // Escaping quotes as well as angle brackets prevents a filesystem name or
+    // bundle display name from creating an inline event handler in the WebView.
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function showDialog({ title = 'Confirmação', message = '', confirmText = 'Confirmar', cancelText = 'Cancelar', showCancel = true, confirmClass = 'primary' }) {
@@ -976,7 +986,7 @@ async function scanStartup() {
                     <td><strong>${escapeHtml(item.label)}</strong></td>
                     <td class="color-muted">${escapeHtml(item.exec_path || 'Comando dinâmico')}</td>
                     <td>
-                        <button onclick="toggleStartup(${idx})" class="btn ${btnClass} btn-sm">
+                        <button data-startup-index="${idx}" class="btn ${btnClass} btn-sm startup-action-btn">
                             ${actionText}
                         </button>
                     </td>
@@ -985,6 +995,11 @@ async function scanStartup() {
         });
         
         tbody.innerHTML = html;
+        tbody.querySelectorAll('.startup-action-btn[data-startup-index]').forEach(button => {
+            button.addEventListener('click', () => {
+                toggleStartup(parseInt(button.dataset.startupIndex, 10));
+            });
+        });
         
     } catch (err) {
         tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Erro ao mapear startup: ${escapeHtml(err.message || err)}</td></tr>`;
@@ -1174,7 +1189,7 @@ async function scanDuplicates() {
         scannedDuplicates.forEach((group, groupIdx) => {
             // Header for this group
             html += `
-                <tr class="dup-header-row">
+                <tr class="dup-header-row" data-group-name="${escapeHtml(group.files[0]?.name || '')}" data-group-size="${Number(group.size_bytes) || 0}">
                     <td colspan="2">📁 Conjunto Duplicado (${escapeHtml(group.size_human)})</td>
                     <td colspan="3" class="color-muted">SHA-256: ${escapeHtml(group.hash.substring(0, 16))}…</td>
                 </tr>
@@ -1806,7 +1821,7 @@ async function selectApp(idx) {
     tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Buscando caches e arquivos de suporte...</td></tr>';
     
     try {
-        const files = await window.pywebview.api.get_app_related_files(app.path, app.bundle_id, app.name);
+        const files = await window.pywebview.api.get_app_related_files(app.path, app.bundle_id);
         if (selectionRequestId !== appSelectionRequestId || selectedAppIdx !== idx) return;
         relatedFiles = files;
         
@@ -2166,6 +2181,35 @@ async function refreshDiskUsage() {
 }
 
 // ==================== GENERIC TABLE FILTERING & SORTING ====================
+function sortDuplicateGroups(tbody, type, ascending) {
+    // Each hash header and its copies form one unit. The first copy remains
+    // the preserved file, so ordering groups never changes which file is kept.
+    const groups = [];
+    let currentGroup = null;
+    for (const row of Array.from(tbody.children)) {
+        if (row.classList.contains('dup-header-row')) {
+            currentGroup = { header: row, copies: [] };
+            groups.push(currentGroup);
+        } else if (currentGroup) {
+            currentGroup.copies.push(row);
+        }
+    }
+
+    const value = group => type === 'size'
+        ? Number(group.header.dataset.groupSize) || 0
+        : group.header.dataset.groupName || '';
+    groups.sort((a, b) => {
+        const comparison = type === 'size'
+            ? value(a) - value(b)
+            : value(a).localeCompare(value(b));
+        return ascending ? comparison : -comparison;
+    });
+    for (const group of groups) {
+        tbody.appendChild(group.header);
+        group.copies.forEach(row => tbody.appendChild(row));
+    }
+}
+
 function setupTableInteractions() {
     document.querySelectorAll('.search-input').forEach(input => {
         input.addEventListener('input', (e) => {
@@ -2205,6 +2249,13 @@ function setupTableInteractions() {
             th.parentNode.querySelectorAll('.sort-icon').forEach(icon => icon.textContent = '▼');
             const icon = th.querySelector('.sort-icon');
             if(icon) icon.textContent = isAsc ? '▲' : '▼';
+
+            if (table.id === 'duplicates-table') {
+                const ascending = !isAsc;
+                if (icon) icon.textContent = ascending ? '▲' : '▼';
+                sortDuplicateGroups(tbody, type, ascending);
+                return;
+            }
 
             rows.sort((a, b) => {
                 const aCol = a.children[index];

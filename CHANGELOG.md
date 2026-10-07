@@ -9,6 +9,41 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 - Empacotamento público assinado e notarizado para distribuição fora da máquina de desenvolvimento.
 
+## [0.7.3] - 2026-10-02
+
+### Segurança
+
+- Remoções de duplicados são serializadas para impedir que duas solicitações simultâneas removam cópias opostas e deixem o conjunto sem um arquivo preservado.
+
+### Corrigido
+
+- Varreduras repetidas de arquivos grandes e duplicados mantêm o progresso e o botão de cancelamento até a conclusão da solicitação atual, mesmo quando o backend ainda informa a conclusão anterior.
+- A ordenação de duplicados preserva cada conjunto com seu cabeçalho SHA-256 e sua cópia protegida, usando o tamanho exato em bytes.
+- Os cartões do Dashboard exibem o estado ainda não analisado antes da primeira varredura, em vez de indicar um carregamento contínuo.
+- Caches de navegador que recebem alterações comuns após a análise podem ser enviados à Lixeira depois da revalidação completa, preservando o bloqueio de itens substituídos ou protegidos.
+- A interface de terminal trata itens de início de sessão pela API própria, com confirmação, e rejeita números zero ou negativos na seleção de navegadores.
+- O aplicativo compilado declara o macOS mínimo exigido pelos binários nativos embarcados, incluindo o Python.
+- O build resolve a raiz do projeto antes de manipular artefatos e recusa arquitetura incompatível também em compilações locais.
+
+### Testes
+
+- Novas regressões comportamentais para progresso da interface, limpeza de caches, remoção concorrente de duplicados, menus de terminal e requisitos do bundle.
+
+## [0.7.2] - 2026-09-30
+
+### Segurança
+
+- **A limpeza de caches agora valida todo o conteúdo de cada item antes de enviá-lo à Lixeira.** Antes, só o item de topo passava pela política de segurança e o restante era apenas somado ao tamanho; um diretório de cache com aparência segura podia conter um pacote de documento, um item gerenciado por serviço de nuvem, um link simbólico ou um item de outro proprietário e ser movido inteiro. Agora toda a subárvore é validada durante a varredura e revalidada imediatamente antes da movimentação: se algo protegido aparecer depois da varredura, a operação falha de forma segura e o item permanece no lugar.
+- **Interface reforçada contra HTML injetado por nomes de arquivos e de aplicativos.** `escapeHtml` passou a escapar também aspas simples e duplas (a função é usada dentro de atributos entre aspas), os botões da aba de inicialização deixaram de usar `onclick` inline e uma Content Security Policy passou a bloquear scripts e manipuladores de evento inline, além de conexões de rede a partir do WebView.
+- **O desinstalador não confia mais no nome do aplicativo enviado pela interface.** A busca de arquivos de suporte usa somente o bundle identifier e o nome registrados pela última listagem confiável de aplicativos.
+- **O resumo por Apple Intelligence é descartado se alterar qualquer número.** Se o texto reescrito pelo modelo mudar, omitir ou inventar um valor (tamanhos, porcentagens ou contagens), ou vier vazio, o app volta ao resumo determinístico padrão.
+
+### Alterado
+
+- A política de remoção passou a aceitar itens dentro de `~/Library/Application Scripts`, pasta que o desinstalador já varria em busca de sobras (scripts de aplicativos com sandbox). A pasta raiz continua protegida.
+- Dependências atualizadas: PyObjC 12.2.1 → 12.2.2 (os seis pacotes, que precisam subir juntos) e PyInstaller 6.22.0 → 6.22.3.
+- Sete novos testes de segurança cobrem os itens acima.
+
 ## [0.7.1] - 2026-08-18
 
 ### Corrigido
@@ -53,7 +88,9 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Build nativo para Apple Silicon com suporte opcional a `universal2`.
 - Dependências atualizadas e fixadas para builds reproduzíveis.
 
-[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.1...HEAD
+[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.2...v0.7.3
+[0.7.2]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/HollyGM/HollyOptimizer/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/HollyGM/HollyOptimizer/releases/tag/v0.6.2

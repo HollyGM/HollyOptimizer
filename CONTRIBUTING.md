@@ -23,6 +23,7 @@ Execute:
 .venv/bin/python3 hollyoptimizer_gui.py --self-test
 .venv/bin/python3 -m compileall -q core hollyoptimizer.py hollyoptimizer_gui.py
 node --check gui/app.js
+node --test tests/test_gui.js
 ```
 
 Além dos testes automatizados, confirme que:

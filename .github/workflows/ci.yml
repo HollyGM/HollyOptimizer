@@ -50,3 +50,4 @@ jobs:
         run: |
           python -m compileall -q core hollyoptimizer.py hollyoptimizer_gui.py
           node --check gui/app.js
+          node --test tests/test_gui.js

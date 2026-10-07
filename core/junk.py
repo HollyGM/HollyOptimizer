@@ -11,6 +11,7 @@ from .utils import (
     get_dir_size,
     is_safe_scan_candidate,
     is_safe_to_delete,
+    measure_and_validate_tree,
     move_to_trash,
     run_command,
     snapshot_path_identity,
@@ -279,17 +280,20 @@ def _scan_target_items(target: dict) -> dict:
         for name in names:
             item_path = os.path.join(root, name)
             try:
-                if os.path.isdir(item_path):
-                    item_size, item_count = get_dir_size(item_path, feature="junk")
-                else:
-                    item_size, item_count = os.path.getsize(item_path), 1
-
                 if _is_browser_managed(item_path, browser_roots):
+                    if os.path.isdir(item_path):
+                        item_size, item_count = get_dir_size(item_path, feature="junk")
+                    else:
+                        item_size, item_count = os.path.getsize(item_path), 1
                     stats["deferred"] += 1
                     stats["deferred_bytes"] += item_size
                     continue
 
                 if _is_own_data(item_path):
+                    if os.path.isdir(item_path):
+                        item_size, item_count = get_dir_size(item_path, feature="junk")
+                    else:
+                        item_size, item_count = os.path.getsize(item_path), 1
                     stats["skipped"] += 1
                     stats["skipped_bytes"] += item_size
                     continue
@@ -305,10 +309,23 @@ def _scan_target_items(target: dict) -> dict:
                     # .service) is treated as a document package by macOS and
                     # was silently skipped, so the reported total quietly
                     # understated the disk.
+                    if os.path.isdir(item_path):
+                        item_size, _ = get_dir_size(item_path, feature="junk")
+                    else:
+                        item_size = os.path.getsize(item_path)
                     stats["skipped"] += 1
                     stats["skipped_bytes"] += item_size
                     continue
 
+                # Validate every descendant in the same traversal that measures
+                # the candidate. A safe-looking cache directory may contain a
+                # document package, cloud placeholder, symlink or foreign-owned
+                # item that must keep the whole directory out of auto-cleaning.
+                item_size, item_count = measure_and_validate_tree(
+                    item_path,
+                    feature="junk",
+                    require_user_owned=require_user_owned,
+                )
                 identity = snapshot_path_identity(item_path)
                 stats["size"] += item_size
                 stats["count"] += item_count
@@ -464,15 +481,14 @@ def clean_target(target_key: str) -> dict:
                 result["errors"].append("Item bloqueado pela política de segurança.")
                 continue
 
-            if os.path.isdir(item_path):
-                item_size, item_count = get_dir_size(item_path, feature="junk")
-            else:
-                try:
-                    item_size = os.path.getsize(item_path)
-                except OSError as exc:
-                    record_issue("junk", exc, item_path)
-                    item_size = 0
-                item_count = 1
+            # Re-run the complete subtree gate immediately before the Trash
+            # move. Cache contents may change after the scan, but newly added
+            # protected content must make the operation fail closed.
+            item_size, item_count = measure_and_validate_tree(
+                item_path,
+                feature="junk",
+                require_user_owned=require_user_owned,
+            )
 
             success, msg = move_to_trash(
                 item_path,

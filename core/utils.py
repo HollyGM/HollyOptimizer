@@ -94,6 +94,7 @@ ALLOW_DELETE_ROOTS = [
     "~/Library/Group Containers",
     "~/Library/HTTPStorages",
     "~/Library/WebKit",
+    "~/Library/Application Scripts",
     "~/Library/iTunes",
     "~/Applications",
     "~/.npm/_cacache",

@@ -298,7 +298,11 @@ def clean_browser_cache(browser_key: str) -> dict:
             # The size comes from the same traversal.
             size, count = _validate_and_measure(path)
 
-            success, message = move_to_trash(path, expected_identity=expected["identity"])
+            success, message = move_to_trash(
+                path,
+                expected_identity=expected["identity"],
+                allow_content_changes=True,
+            )
             if success:
                 result["bytes_moved"] += size
                 result["files_moved"] += count

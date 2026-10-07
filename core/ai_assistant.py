@@ -19,15 +19,22 @@ resumo determinístico que já existia antes desta funcionalidade.
 import json
 import os
 import platform
+import re
 import subprocess  # nosec B404
-import sys
 import threading
+from collections import Counter
+from decimal import Decimal
 
 _LOCK = threading.RLock()
 _RESOURCE_ROOT = {"value": None}
 
 _MAX_FACTS_LENGTH = 4000
 _TIMEOUT_SECONDS = 20
+_NUMERIC_TOKEN_PATTERN = re.compile(
+    r"(?<![\w])(?P<number>[-+]?\d+(?:[.,]\d+)?)"
+    r"(?:\s*(?P<unit>B|KB|MB|GB|TB|%))?",
+    re.IGNORECASE,
+)
 
 
 def configure(resource_root: str) -> None:
@@ -61,6 +68,14 @@ def is_available() -> bool:
     if platform.machine() != "arm64":
         return False
     return bool(_locate_binary())
+
+
+def _numeric_tokens(text: str) -> Counter:
+    """Returns exact numeric facts, including storage units and percentages."""
+    return Counter(
+        (Decimal(match.group("number").replace(",", ".")), (match.group("unit") or "").upper())
+        for match in _NUMERIC_TOKEN_PATTERN.finditer(text)
+    )
 
 
 def summarize(facts: str) -> dict:
@@ -100,4 +115,10 @@ def summarize(facts: str) -> dict:
 
     if not isinstance(parsed, dict) or "available" not in parsed:
         return {"available": False, "reason": "invalid_helper_output"}
+    if parsed.get("available") is True:
+        summary = parsed.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            return {"available": False, "reason": "invalid_helper_output"}
+        if _numeric_tokens(summary) != _numeric_tokens(facts[:_MAX_FACTS_LENGTH]):
+            return {"available": False, "reason": "numeric_facts_changed"}
     return parsed
