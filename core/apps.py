@@ -282,7 +282,7 @@ def delete_leftover(path: str) -> tuple[bool, str]:
         # Rewalk the complete candidate at action time. This preserves the
         # symlink/package/cloud gates while allowing ordinary cache writes that
         # happened after the scan.
-        _validate_candidate(path)
+        size_bytes, file_count = _validate_candidate(path)
     except (OSError, ValueError) as exc:
         return False, f"Não foi possível revalidar a sobra: {exc}"
 
@@ -300,4 +300,7 @@ def delete_leftover(path: str) -> tuple[bool, str]:
         path,
         expected_identity=expected["identity"],
         allow_content_changes=True,
+        feature="leftovers",
+        size_bytes=size_bytes,
+        file_count=file_count,
     )

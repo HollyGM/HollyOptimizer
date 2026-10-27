@@ -101,6 +101,14 @@ ALLOW_DELETE_ROOTS = [
     "~/.cargo/registry/cache",
     "~/.cargo/registry/src",
     "~/.gradle/caches",
+    "~/Library/pnpm/store",
+    "~/.pnpm-store",
+    "~/.local/share/pnpm/store",
+    "~/.yarn/berry/cache",
+    "~/.cache/yarn",
+    "~/.cache/pip",
+    "~/.cache/uv",
+    "~/.bun/install/cache",
 ]
 
 SENSITIVE_EXTENSIONS = {".sqlite", ".sqlite3", ".sqlitedb", ".db", ".keychain", ".keychain-db"}
@@ -569,16 +577,43 @@ def reset_auth_state():
     """Compatibility hook retained for the JavaScript API."""
     return
 
+def _record_history_move(
+    feature: str, original: str, trash_path: str, size_bytes: int, file_count: int
+) -> None:
+    """Writes the move to the local history so it can be undone from the app."""
+    if not feature or not trash_path:
+        return
+    try:
+        from . import history
+
+        history.record_move(
+            feature=feature,
+            original_path=original,
+            trash_path=trash_path,
+            size_bytes=size_bytes,
+            file_count=file_count,
+        )
+    except Exception as exc:  # the move already happened; history is best-effort
+        record_issue("history", exc, original)
+
+
 def move_to_trash(
     path: str,
     *,
     intent: str = "user_data",
     expected_identity=None,
     allow_content_changes: bool = False,
+    feature: str = "",
+    size_bytes: int = 0,
+    file_count: int = 0,
 ) -> tuple[bool, str]:
     """
     Moves a file or directory through NSFileManager's native Trash API.
     Name collisions and per-volume Trash semantics are handled by macOS.
+
+    When ``feature`` is given, the completed move is recorded in the local
+    history (original path, name inside the Trash, size) so the Histórico tab
+    can restore it later.
     """
     try:
         validate_path_sanity(path)
@@ -626,7 +661,9 @@ def move_to_trash(
             success, resulting_url, error = bool(result), None, None
 
         if success:
-            new_name = os.path.basename(str(resulting_url.path())) if resulting_url else os.path.basename(resolved)
+            resulting_path = str(resulting_url.path()) if resulting_url else ""
+            new_name = os.path.basename(resulting_path) if resulting_path else os.path.basename(resolved)
+            _record_history_move(feature, resolved, resulting_path, size_bytes, file_count)
             return True, f"Movido para a Lixeira: {new_name}"
         error_text = str(error or "")
         normalized_error = error_text.casefold()
@@ -702,6 +739,7 @@ def move_app_to_trash_authorized(
     code, stdout, stderr = run_authorized_command(command)
 
     if code == 0 and not os.path.lexists(resolved) and os.path.lexists(destination):
+        _record_history_move("uninstaller", resolved, destination, 0, 0)
         return True, f"Movido para a Lixeira com autorização administrativa: {os.path.basename(destination)}"
 
     if "(-128)" in stderr or "User canceled" in stderr or "cancelado" in stderr.casefold():

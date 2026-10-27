@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/HollyGM/HollyOptimizer/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/HollyGM/HollyOptimizer/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="CHANGELOG.md"><img alt="Versão 0.7.3, build 19" src="https://img.shields.io/badge/vers%C3%A3o-0.7.3%20%C2%B7%20build%2019-56d28e"></a>
+  <a href="CHANGELOG.md"><img alt="Versão 0.8.0, build 20" src="https://img.shields.io/badge/vers%C3%A3o-0.8.0%20%C2%B7%20build%2020-56d28e"></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-111827?logo=apple">
   <img alt="Apple Silicon" src="https://img.shields.io/badge/Apple%20Silicon-nativo-16a34a?logo=apple">
   <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white">
@@ -24,22 +24,25 @@
 
 O **HollyOptimizer** é um utilitário desktop para diagnosticar o Mac, localizar desperdício de espaço e executar correções seguras. O projeto combina Python, PyWebView, HTML, CSS e JavaScript e foi otimizado para Apple Silicon, sem abandonar a compatibilidade de desenvolvimento com Macs Intel.
 
-> A versão atual é **0.7.3 (build 19)**. O aplicativo foi validado em um MacBook com chip Apple M5. O código é específico do macOS; Windows e Linux poderão receber implementações próprias no futuro, mas ainda não são suportados.
+> A versão atual é **0.8.0 (build 20)**. O aplicativo foi validado em um MacBook com chip Apple M5. O código é específico do macOS; Windows e Linux poderão receber implementações próprias no futuro, mas ainda não são suportados.
 
 ## Recursos
 
 - **Permissões guiadas:** ao abrir o app, o Acesso Total ao Disco é verificado passivamente. As autorizações de Automação (Finder, System Events) são verificadas quando a aba Permissões é aberta, evitando disparar AppleEvents sem contexto. Há um botão direto para o painel correto dos Ajustes do Sistema para cada item, e um aviso no Dashboard indica quando algo precisa de atenção.
 - **Resumo por Apple Intelligence:** um modelo on-device (Foundation Models) reescreve o resumo da varredura em linguagem natural. Se o texto reescrito alterar, omitir ou inventar qualquer número, ele é descartado e o app volta ao resumo padrão. Totalmente opcional e local — nada sai do Mac. Requer Apple Silicon, macOS 26 ou posterior e Apple Intelligence ativado.
-- **Limpeza reversível:** caches e arquivos temporários elegíveis são enviados à Lixeira nativa; ela nunca é esvaziada automaticamente. Inclui caches de desenvolvimento (NPM, Pip, Cargo, Gradle, Xcode DerivedData).
+- **Limpeza reversível:** caches e arquivos temporários elegíveis são enviados à Lixeira nativa; ela nunca é esvaziada automaticamente. Inclui caches de desenvolvimento e de IA (npm, pnpm, Yarn, Bun, pip, uv, Cargo, Gradle, Go, CocoaPods, Homebrew, Playwright, Xcode DerivedData) e os caches de apps Electron (VS Code, Slack, Discord, Notion, Claude).
+- **Histórico e Desfazer:** cada lote de limpeza fica registrado localmente (o que foi movido, de onde, quanto) e um item pode ser devolvido ao lugar de origem enquanto estiver na Lixeira. A linha do tempo guarda o espaço livre de cada varredura e mostra o que mais cresceu desde a anterior.
+- **Selo de uso:** cada categoria recebe "aberto agora", "usado hoje" ou "parado há N dias". Apps e ferramentas abertos ficam fora da limpeza: o Xcode, o Homebrew, o Gradle e o Playwright bloqueiam suas categorias enquanto rodam, e o cache de um app Electron só entra quando o app está fechado — a verificação é refeita no momento da limpeza.
+- **Avisos no Dashboard:** meta de espaço livre configurável com aviso quando o disco fica abaixo dela, tamanho da Lixeira, apps em loop de travamento (3+ relatórios em 24 h) e itens de inicialização novos desde a última varredura.
 - **Política central de segurança:** Keychains, iCloud, Mail, Messages, SSH, bancos de dados, cookies e outras áreas sensíveis são bloqueados.
 - **Sobras de aplicativos:** detecção conservadora, limitada a itens cujo aplicativo de origem pode ser verificado.
-- **Desinstalador:** move o aplicativo para a Lixeira, pedindo autenticação do macOS apenas quando necessário, e localiza arquivos de suporte em `~/Library` pelo bundle identifier e pelo nome registrados na última listagem de aplicativos.
+- **Desinstalador:** move o aplicativo para a Lixeira, pedindo autenticação do macOS apenas quando necessário, e localiza arquivos de suporte em `~/Library` pelo bundle identifier e pelo nome registrados na última listagem de aplicativos. Mostra a data do último uso registrada pelo macOS e filtra apps sem uso há 90 dias ou mais.
 - **Navegadores:** limpeza dedicada de caches de Safari, Firefox, Zen, Orion e navegadores Chromium (Chrome, Edge, Brave, Vivaldi, Arc, Opera e outros), preservando histórico, senhas, cookies, sessões, favoritos e extensões.
 - **Inicialização:** inventário e gerenciamento de LaunchAgents, LaunchDaemons e itens de início de sessão.
 - **Arquivos grandes e duplicados:** busca configurável, ordenação por tamanho ou dias de inatividade, confirmação antes da remoção e revalidação por SHA-256.
 - **Dependências:** auditoria de Homebrew, NPM e Pip, com remoção de pacotes da listagem mais recente e manutenção opcional do Homebrew.
-- **Segurança:** diagnóstico somente leitura de FileVault, Firewall, Gatekeeper, SIP e atualizações.
-- **Rede e memória:** teste de latência, limpeza do cache de DNS, pressão de memória, swap e encerramento confirmado de processos, sem usar `purge`.
+- **Segurança:** diagnóstico somente leitura de FileVault, Firewall, Gatekeeper, SIP, atualizações e navegadores abertos com porta de depuração remota (controle por outro programa).
+- **Rede e memória:** teste de latência, limpeza do cache de DNS, pressão de memória, swap, o indicador "Pronto para tarefa pesada?" e dois níveis para liberar RAM — Fechar (o mesmo pedido de ⌘Q) e Encerrar (SIGTERM) — sempre com confirmação e sem usar `purge`.
 - **Apple Silicon:** identifica chip, núcleos, memória unificada, Rosetta 2 e a arquitetura dos aplicativos instalados.
 
 ## Capturas de tela
@@ -65,6 +68,8 @@ O HollyOptimizer adota privilégio mínimo e separa claramente inventário, revi
 - A interface escapa nomes de arquivos e de aplicativos, e uma Content Security Policy bloqueia scripts e manipuladores de evento inline, além de conexões de rede a partir do WebView.
 - Snapshots locais do Time Machine, Docker Data, Xcode Archives, Xcode DeviceSupport, simuladores, backups de iPhone/iPad e caminhos do sistema são apenas medidos e informados.
 - Itens recusados pela política são contabilizados e explicados na interface.
+- Uma categoria nomeada que vive dentro de outra (o cache do pip dentro de `~/Library/Caches`, os relatórios de travamento dentro de `~/Library/Logs`) é contada e limpa apenas pela categoria dona, nunca pelas duas.
+- O histórico só restaura o que o próprio app moveu: o item precisa continuar dentro de `~/.Trash`, o caminho original precisa estar livre e dentro das áreas administradas, e nada é sobrescrito. Modelos de IA, dados do Claude Code, do Codex e ambientes do Claude Desktop são apenas medidos.
 - A auditoria Apple Silicon é somente leitura e nunca altera ou “afina” binários universais.
 - Esvaziar a Lixeira usa a Automação do Finder, autorizada explicitamente. Se ela for negada, o app oferece apenas a exclusão permanente local de `~/.Trash`, com uma segunda confirmação dedicada; Lixeiras de outros volumes não são tocadas.
 - Acesso Total ao Disco é opcional; sem ele, o aplicativo continua funcionando e informa os locais inacessíveis.
@@ -73,7 +78,7 @@ Leia [SECURITY.md](SECURITY.md) antes de relatar uma possível vulnerabilidade.
 
 ## Requisitos
 
-- macOS 12 ou posterior para o código-fonte; o aplicativo compilado pode exigir uma versão mais recente, calculada no build (o build 19 gerado localmente exige macOS 27 ou posterior — veja [Gerar o aplicativo](#gerar-o-aplicativo));
+- macOS 12 ou posterior para o código-fonte; o aplicativo compilado pode exigir uma versão mais recente, calculada no build (o build 20 gerado localmente exige macOS 27 ou posterior — veja [Gerar o aplicativo](#gerar-o-aplicativo));
 - Python 3.12 ou posterior para desenvolvimento;
 - dependências fixadas em [`requirements.txt`](requirements.txt);
 - Node.js para validar e testar a interface (o CI usa a versão 22);
@@ -112,7 +117,7 @@ node --check gui/app.js
 node --test tests/test_gui.js
 ```
 
-A suíte Python cobre a política de segurança, o empacotamento e os menus do terminal; `tests/test_gui.js` cobre o progresso das varreduras e a ordenação de duplicados na interface. O autoteste apenas verifica recursos, comandos e políticas, sem limpar nada nem abrir a janela do aplicativo. O CI executa os mesmos passos em [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+A suíte Python cobre a política de segurança, o histórico e a restauração, a detecção de uso, os avisos do Dashboard, o empacotamento e os menus do terminal; `tests/test_gui.js` cobre o progresso das varreduras, a ordenação de duplicados e a linha bloqueada de uma categoria em uso. O autoteste apenas verifica recursos, comandos e políticas, sem limpar nada nem abrir a janela do aplicativo. O CI executa os mesmos passos em [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## Gerar o aplicativo
 
@@ -124,7 +129,7 @@ O bundle será criado em `dist/HollyOptimizer.app`. Sem uma identidade Apple, o 
 
 O script apaga `build/` e `dist/` antes de compilar, compila o auxiliar de Apple Intelligence quando há Apple Silicon e `swiftc`, executa o autoteste dentro do bundle e interrompe o build se a arquitetura gerada divergir do alvo pedido.
 
-O código admite macOS 12 ou posterior, mas o macOS mínimo do aplicativo compilado também depende do Python e das bibliotecas nativas usados no build. O empacotamento calcula esse requisito, mostra o valor no log do PyInstaller e o registra em `LSMinimumSystemVersion`. O build local 19 exige macOS 27 ou posterior, devido ao Python embutido; para atender a versões anteriores do macOS, compile com um Python cujos binários tenham um alvo mínimo menor.
+O código admite macOS 12 ou posterior, mas o macOS mínimo do aplicativo compilado também depende do Python e das bibliotecas nativas usados no build. O empacotamento calcula esse requisito, mostra o valor no log do PyInstaller e o registra em `LSMinimumSystemVersion`. O build local 20 exige macOS 27 ou posterior, devido ao Python embutido; para atender a versões anteriores do macOS, compile com um Python cujos binários tenham um alvo mínimo menor.
 
 ### Distribuição assinada e notarizada
 

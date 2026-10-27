@@ -3,7 +3,9 @@ import hashlib
 import os
 import re
 import threading
+import time
 
+from . import usage as usage_detector
 from .diagnostics import record_issue
 from .utils import (
     format_size,
@@ -21,6 +23,69 @@ _REGISTRY_LOCK = threading.RLock()
 _ICON_LOCK = threading.RLock()
 _LAST_LISTED_APPS = {}
 _RELATED_BY_APP = {}
+_RELATED_SIZES = {}
+
+# An app the user has not opened for this long is listed as "sem uso": a
+# candidate to review, never an automatic removal.
+UNUSED_DAYS_THRESHOLD = 90
+_DAY_SECONDS = 24 * 3600
+
+
+def _last_used_metadata(app_path: str) -> tuple[float | None, int]:
+    """Last-use timestamp and use count that macOS itself keeps in Spotlight."""
+    try:
+        from Foundation import NSURL, NSMetadataItem
+
+        item = NSMetadataItem.alloc().initWithURL_(NSURL.fileURLWithPath_(app_path))
+        if item is None:
+            return None, 0
+        last_used = item.valueForAttribute_("kMDItemLastUsedDate")
+        use_count = item.valueForAttribute_("kMDItemUseCount")
+        timestamp = float(last_used.timeIntervalSince1970()) if last_used is not None else None
+        return timestamp, int(use_count) if use_count is not None else 0
+    except Exception:
+        return None, 0
+
+
+def describe_last_use(
+    last_used_ts: float | None,
+    use_count: int = 0,
+    *,
+    running: bool = False,
+    now: float | None = None,
+) -> dict:
+    """Turns the Spotlight last-use date into the label shown in the list."""
+    now = time.time() if now is None else now
+    if running:
+        return {
+            "running": True,
+            "last_used_days": 0,
+            "last_used_label": "aberto agora",
+            "use_count": int(use_count or 0),
+            "unused": False,
+        }
+    if last_used_ts is None:
+        return {
+            "running": False,
+            "last_used_days": None,
+            "last_used_label": "sem registro de uso",
+            "use_count": int(use_count or 0),
+            "unused": False,
+        }
+    days = max(0, int((now - last_used_ts) // _DAY_SECONDS))
+    if days == 0:
+        label = "usado hoje"
+    elif days == 1:
+        label = "usado ontem"
+    else:
+        label = f"usado há {days} dias"
+    return {
+        "running": False,
+        "last_used_days": days,
+        "last_used_label": label,
+        "use_count": int(use_count or 0),
+        "unused": days >= UNUSED_DAYS_THRESHOLD,
+    }
 
 def _safe_cache_key(bundle_id: str, app_path: str) -> str:
     raw = bundle_id or os.path.basename(app_path).removesuffix(".app")
@@ -119,7 +184,8 @@ def list_installed_apps() -> list[dict]:
         "/Applications",
         os.path.expanduser("~/Applications")
     ]
-    
+    running_bundles = usage_detector.get_snapshot(refresh=True)["bundle_ids"]
+
     for base_path in search_paths:
         if not os.path.exists(base_path) or not os.path.isdir(base_path):
             continue
@@ -169,6 +235,13 @@ def list_installed_apps() -> list[dict]:
                     record_issue("uninstaller", exc, app_path)
                     size_bytes = 0
 
+                last_used_ts, use_count = _last_used_metadata(app_path)
+                usage_info = describe_last_use(
+                    last_used_ts,
+                    use_count,
+                    running=bundle_id.casefold() in running_bundles,
+                )
+
                 apps.append({
                     "name": display_name,
                     "filename": item,
@@ -177,6 +250,7 @@ def list_installed_apps() -> list[dict]:
                     "version": version,
                     "size_bytes": size_bytes,
                     "size_human": format_size(size_bytes),
+                    **usage_info,
                     "_identity": snapshot_path_identity(app_path),
                 })
             except (OSError, ValueError) as exc:
@@ -189,6 +263,7 @@ def list_installed_apps() -> list[dict]:
     with _REGISTRY_LOCK:
         _LAST_LISTED_APPS.clear()
         _RELATED_BY_APP.clear()
+        _RELATED_SIZES.clear()
         for app in apps:
             _LAST_LISTED_APPS[os.path.realpath(app["path"])] = dict(app)
 
@@ -289,6 +364,10 @@ def get_app_related_files(app_path: str, bundle_id: str) -> list[dict]:
         _RELATED_BY_APP[os.path.realpath(app_path)] = {
             os.path.realpath(item["path"]): item["_identity"] for item in related_files
         }
+        _RELATED_SIZES[os.path.realpath(app_path)] = {
+            os.path.realpath(item["path"]): (item["size_bytes"], item["count"])
+            for item in related_files
+        }
 
     for item in related_files:
         item.pop("_identity", None)
@@ -307,6 +386,7 @@ def uninstall_app(app_path: str, related_paths: list) -> tuple[bool, list]:
     registered = _registered_app(resolved_app)
     with _REGISTRY_LOCK:
         allowed_related = dict(_RELATED_BY_APP.get(resolved_app, {}))
+        related_sizes = dict(_RELATED_SIZES.get(resolved_app, {}))
 
     if not registered:
         return False, ["✗ Aplicativo bloqueado: não pertence à listagem mais recente."]
@@ -322,6 +402,8 @@ def uninstall_app(app_path: str, related_paths: list) -> tuple[bool, list]:
             app_path,
             intent="app_bundle",
             expected_identity=registered.get("_identity"),
+            feature="uninstaller",
+            size_bytes=int(registered.get("size_bytes", 0) or 0),
         )
         permission_failure = any(marker in msg.casefold() for marker in (
             "code=513",
@@ -344,7 +426,14 @@ def uninstall_app(app_path: str, related_paths: list) -> tuple[bool, list]:
 
     for path in sorted(requested_related):
         if os.path.exists(path):
-            ok, msg = move_to_trash(path, expected_identity=allowed_related[path])
+            size_bytes, file_count = related_sizes.get(path, (0, 0))
+            ok, msg = move_to_trash(
+                path,
+                expected_identity=allowed_related[path],
+                feature="uninstaller",
+                size_bytes=size_bytes,
+                file_count=file_count,
+            )
             if ok:
                 logs.append(f"✓ {msg}")
             else:

@@ -3,8 +3,10 @@ import io
 import json
 import os
 import struct
+import sys
 import tempfile
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from pathlib import Path
@@ -17,15 +19,19 @@ from core import (
     dependencies,
     diagnostics,
     duplicates,
+    health,
+    history,
     junk,
     large_files,
     memory,
     progress,
     security_audit,
     self_test,
+    settings,
     silicon,
     startup,
     uninstaller,
+    usage,
     utils,
 )
 
@@ -609,6 +615,7 @@ class SecurityAuditTests(unittest.TestCase):
             "spctl": (0, "assessments enabled", ""),
             "csrutil": (0, "System Integrity Protection status: enabled.", ""),
             "softwareupdate": (0, "Automatic checking is on", ""),
+            "ps": (0, "/Applications/Safari.app/Contents/MacOS/Safari\n", ""),
         }
 
         def fake_run(command, timeout=120):
@@ -619,11 +626,33 @@ class SecurityAuditTests(unittest.TestCase):
 
         self.assertTrue(report["read_only"])
         self.assertEqual(report["status"], "ok")
-        self.assertEqual(report["summary"], {"ok": 5, "attention": 0, "unknown": 0})
+        self.assertEqual(report["summary"], {"ok": 6, "attention": 0, "unknown": 0})
         self.assertEqual(
             [call.args[0][1] for call in runner.call_args_list],
-            ["status", "--getglobalstate", "--status", "status", "--schedule"],
+            ["status", "--getglobalstate", "--status", "status", "--schedule", "-A"],
         )
+
+    def test_remote_controlled_browser_is_flagged_only_from_main_process(self):
+        ps_output = "\n".join([
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/x",
+            "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --remote-debugging-port=9222",
+            "/Applications/Safari.app/Contents/MacOS/Safari",
+            "/bin/zsh -c grep --remote-debugging-port notes.txt --type=x",
+        ])
+        self.assertEqual(
+            security_audit.find_remote_debugging_browsers(ps_output), ["Google Chrome"]
+        )
+        self.assertEqual(security_audit.find_remote_debugging_browsers(""), [])
+
+        with mock.patch.object(security_audit, "run_command", return_value=(0, ps_output, "")):
+            check = security_audit._remote_debugging_check()
+        self.assertEqual(check["status"], "attention")
+        self.assertIn("Google Chrome", check["detail"])
+        self.assertFalse(check["action_available"])
+
+        with mock.patch.object(security_audit, "run_command", return_value=(1, "", "denied")):
+            check = security_audit._remote_debugging_check()
+        self.assertEqual(check["status"], "unknown")
 
     def test_current_softwareupdate_wording_is_recognized(self):
         with mock.patch.object(
@@ -1465,6 +1494,502 @@ class SwapReportingTests(unittest.TestCase):
             stats = memory.get_swap_stats()
         self.assertEqual(stats["swap_used_bytes"], 0)
         self.assertEqual(stats["swap_level"], "unknown")
+
+
+def _usage_snapshot(**overrides):
+    base = {
+        "apps": [],
+        "app_names": set(),
+        "bundle_ids": set(),
+        "bundle_tails": set(),
+        "executables": set(),
+        "commands": [],
+    }
+    base.update(overrides)
+    return base
+
+
+class SettingsTests(unittest.TestCase):
+    def test_free_space_goal_is_validated_and_persisted(self):
+        with tempfile.TemporaryDirectory() as temp_dir, mock.patch.object(
+            settings, "data_dir", return_value=temp_dir
+        ):
+            self.assertEqual(settings.load_settings()["free_space_goal_gb"], 20)
+            self.assertEqual(settings.set_free_space_goal("50")["free_space_goal_gb"], 50)
+            self.assertEqual(settings.load_settings()["free_space_goal_gb"], 50)
+            for invalid in (0, -5, "abc", None, True, 10**9):
+                with self.subTest(value=invalid), self.assertRaises(ValueError):
+                    settings.set_free_space_goal(invalid)
+            self.assertEqual(settings.load_settings()["free_space_goal_gb"], 50)
+            Path(temp_dir, "settings.json").write_text("{not json", encoding="utf-8")
+            self.assertEqual(settings.load_settings()["free_space_goal_gb"], 20)
+        self.assertEqual(settings.coerce_free_space_goal("nope"), 20)
+        self.assertEqual(settings.coerce_free_space_goal(30.9), 30)
+
+
+class UsageDetectionTests(unittest.TestCase):
+    def test_running_match_checks_process_app_bundle_and_command_marker(self):
+        snap = _usage_snapshot(
+            executables={"node"},
+            app_names={"xcode"},
+            bundle_ids={"com.docker.docker"},
+            bundle_tails={"docker"},
+            commands=["/opt/homebrew/library/homebrew/brew.rb install wget"],
+        )
+        self.assertEqual(usage.running_match(process_names=("node",), snapshot=snap), "node")
+        self.assertEqual(usage.running_match(app_names=("Xcode",), snapshot=snap), "Xcode")
+        self.assertEqual(
+            usage.running_match(bundle_ids=("com.docker.docker",), snapshot=snap),
+            "com.docker.docker",
+        )
+        self.assertEqual(
+            usage.running_match(command_markers=("Library/Homebrew",), snapshot=snap),
+            "Library/Homebrew",
+        )
+        self.assertEqual(
+            usage.running_match(process_names=("cargo",), app_names=("Slack",), snapshot=snap),
+            "",
+        )
+
+    def test_app_folder_is_running_by_lock_file_or_running_app_name(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir, "Slack")
+            folder.mkdir()
+            self.assertEqual(usage.app_folder_running(str(folder), _usage_snapshot()), "")
+            (folder / "SingletonLock").symlink_to("host-123")
+            self.assertEqual(usage.app_folder_running(str(folder), _usage_snapshot()), "Slack")
+
+            other = Path(temp_dir, "discord")
+            other.mkdir()
+            self.assertEqual(
+                usage.app_folder_running(str(other), _usage_snapshot(app_names={"discord"})),
+                "discord",
+            )
+            self.assertEqual(
+                usage.app_folder_running(
+                    str(Path(temp_dir, "com.spotify.client")),
+                    _usage_snapshot(bundle_ids={"com.spotify.client"}),
+                ),
+                "com.spotify.client",
+            )
+
+    def test_usage_labels(self):
+        self.assertEqual(usage.describe("Xcode", 3)["state"], "running")
+        self.assertEqual(usage.describe("", 0)["label"], "usado hoje")
+        self.assertEqual(usage.describe("", 1)["label"], "usado ontem")
+        idle = usage.describe("", 12)
+        self.assertEqual(idle["state"], "idle")
+        self.assertIn("12 dias", idle["label"])
+        self.assertEqual(usage.describe("", None)["state"], "unknown")
+
+    def test_last_activity_reads_root_and_direct_children(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old = time.time() - 10 * 86400
+            os.utime(temp_dir, (old, old))
+            self.assertEqual(usage.last_activity_days([temp_dir]), 10)
+            Path(temp_dir, "fresh").write_text("x", encoding="utf-8")
+            os.utime(temp_dir, (old, old))
+            self.assertEqual(usage.last_activity_days([temp_dir]), 0)
+            self.assertIsNone(usage.last_activity_days([os.path.join(temp_dir, "missing")]))
+
+
+class JunkUsageAndDelegationTests(unittest.TestCase):
+    def test_nested_category_root_is_delegated_instead_of_double_counted(self):
+        with tempfile.TemporaryDirectory(dir=os.path.expanduser("~/Downloads")) as temp_dir:
+            parent = Path(temp_dir, "Caches")
+            pip = parent / "pip"
+            pip.mkdir(parents=True)
+            (pip / "wheel.whl").write_bytes(b"x" * 100)
+            (parent / "other").mkdir()
+            (parent / "other" / "f.bin").write_bytes(b"y" * 50)
+            targets = {
+                "parent": {"name": "P", "description": "", "roots": [str(parent)], "cleanable": True},
+                "pip": {"name": "pip", "description": "", "roots": [str(pip)], "cleanable": True},
+            }
+            with mock.patch.dict(junk.JUNK_TARGETS, targets, clear=True):
+                results = junk.scan_junk()
+                with junk._SCAN_LOCK:
+                    registered = dict(junk._LAST_SCAN_ITEMS["parent"])
+            self.assertEqual(results["pip"]["size_bytes"], 100)
+            self.assertEqual(results["parent"]["size_bytes"], 50)
+            self.assertEqual(results["parent"]["delegated"], 1)
+            self.assertNotIn(os.path.realpath(pip), registered)
+
+    def test_category_is_blocked_while_its_tool_runs_and_rechecked_at_clean_time(self):
+        with tempfile.TemporaryDirectory(dir=os.path.expanduser("~/Downloads")) as temp_dir:
+            Path(temp_dir, "build.cache").write_text("x", encoding="utf-8")
+            target = {
+                "name": "Xcode DerivedData", "description": "", "roots": [temp_dir],
+                "cleanable": True, "usage": {"app_names": ("Xcode",)},
+                "block_when_running": True,
+            }
+            running = _usage_snapshot(app_names={"xcode"})
+            with mock.patch.dict(junk.JUNK_TARGETS, {"xcode": target}, clear=True):
+                with mock.patch.object(junk.usage_detector, "get_snapshot", return_value=running):
+                    results = junk.scan_junk()
+                    self.assertTrue(results["xcode"]["blocked"])
+                    self.assertEqual(results["xcode"]["usage"]["state"], "running")
+                    self.assertIn("Xcode", results["xcode"]["blocked_hint"])
+                    with mock.patch.object(junk, "move_to_trash") as trash:
+                        result = junk.clean_target("xcode")
+                    trash.assert_not_called()
+                    self.assertEqual(result["failed"], 1)
+                    self.assertIn("Xcode", result["errors"][0])
+
+                with mock.patch.object(junk.usage_detector, "get_snapshot", return_value=_usage_snapshot()):
+                    results = junk.scan_junk()
+                    self.assertFalse(results["xcode"]["blocked"])
+                    with mock.patch.object(junk, "move_to_trash", return_value=(True, "ok")) as trash:
+                        result = junk.clean_target("xcode")
+                    self.assertEqual(result["moved"], 1)
+                    self.assertEqual(trash.call_args.kwargs["feature"], "junk")
+                    self.assertEqual(trash.call_args.kwargs["size_bytes"], 1)
+
+    def test_electron_cache_of_an_open_app_is_deferred_and_refused_later(self):
+        with tempfile.TemporaryDirectory(dir=os.path.expanduser("~/Downloads")) as temp_dir:
+            support = Path(temp_dir)
+            open_cache = support / "Slack" / "Cache"
+            open_cache.mkdir(parents=True)
+            (open_cache / "data_0").write_bytes(b"a" * 10)
+            (support / "Slack" / "SingletonLock").symlink_to("host-1")
+            closed_cache = support / "Notion" / "Cache"
+            closed_cache.mkdir(parents=True)
+            (closed_cache / "data_0").write_bytes(b"b" * 20)
+            target = {
+                "name": "Electron", "description": "",
+                "roots": [str(support / "*" / "Cache")],
+                "cleanable": True, "item_running_check": "app_folder",
+            }
+            with mock.patch.dict(junk.JUNK_TARGETS, {"electron": target}, clear=True), \
+                 mock.patch.object(junk.usage_detector, "get_snapshot", return_value=_usage_snapshot()):
+                results = junk.scan_junk()
+                self.assertEqual(results["electron"]["size_bytes"], 20)
+                self.assertEqual(results["electron"]["deferred_bytes"], 10)
+                self.assertIn("Slack", results["electron"]["deferred_hint"])
+
+                # Notion opens between the scan and the cleanup.
+                (support / "Notion" / "SingletonLock").symlink_to("host-2")
+                with mock.patch.object(junk, "move_to_trash") as trash:
+                    result = junk.clean_target("electron")
+                trash.assert_not_called()
+                self.assertEqual(result["failed"], 1)
+                self.assertIn("Notion", result["errors"][0])
+
+    def test_new_cache_categories_follow_the_path_policy(self):
+        for root, child in (
+            ("~/.cache/uv", "~/.cache/uv/wheels"),
+            ("~/.cache/pip", "~/.cache/pip/http"),
+            ("~/.bun/install/cache", "~/.bun/install/cache/pkg"),
+            ("~/Library/pnpm/store", "~/Library/pnpm/store/v3"),
+            ("~/.yarn/berry/cache", "~/.yarn/berry/cache/a.zip"),
+        ):
+            with self.subTest(root=root):
+                self.assertTrue(
+                    utils._is_under_allow_root(os.path.realpath(os.path.expanduser(child)))
+                )
+                self.assertFalse(
+                    utils._is_under_allow_root(os.path.realpath(os.path.expanduser(root)))
+                )
+        for key in (
+            "homebrew_cache", "pnpm_store", "yarn_cache", "bun_cache", "uv_cache",
+            "go_build_cache", "playwright_browsers", "electron_app_caches", "crash_reports",
+        ):
+            self.assertTrue(junk.JUNK_TARGETS[key]["cleanable"], key)
+        for key in ("ai_models", "claude_code_data", "claude_desktop_vm", "codex_data"):
+            self.assertFalse(junk.JUNK_TARGETS[key]["cleanable"], key)
+        for key in ("xcode_derived_data", "homebrew_cache", "gradle_cache", "playwright_browsers"):
+            self.assertTrue(junk.JUNK_TARGETS[key]["block_when_running"], key)
+        for root in junk.JUNK_TARGETS["electron_app_caches"]["roots"]:
+            self.assertTrue(any(root.endswith("/" + sub) for sub in junk._ELECTRON_CACHE_SUBDIRS), root)
+            for forbidden in ("Local Storage", "IndexedDB", "Session Storage", "Preferences", "Cookies"):
+                self.assertNotIn(forbidden, root)
+        # The app's own history and settings never enter the general cleanup.
+        self.assertTrue(
+            junk._is_own_data(os.path.expanduser("~/Library/Application Support/HollyOptimizer/history.json"))
+        )
+
+
+class HistoryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(dir=os.path.expanduser("~/Downloads"))
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(os.path.realpath(self.temp.name))
+        self.trash = self.root / "Trash"
+        self.trash.mkdir()
+        data = self.root / "data"
+        data.mkdir()
+        for patch in (
+            mock.patch.object(history, "_history_path", return_value=str(data / "history.json")),
+            mock.patch.object(history, "_trash_dir", return_value=str(self.trash)),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+        history.begin_batch("")
+
+    def _newest_entry_id(self):
+        return history.list_history()["batches"][0]["items"][0]["id"]
+
+    def test_record_list_and_restore_roundtrip(self):
+        original = self.root / "cache-folder"
+        original.mkdir()
+        (original / "entry.bin").write_bytes(b"x" * 10)
+        trashed = self.trash / "cache-folder"
+        os.rename(original, trashed)
+
+        history.begin_batch("Limpeza de teste")
+        history.record_move(
+            feature="junk", original_path=str(original), trash_path=str(trashed),
+            size_bytes=10, file_count=1,
+        )
+        listing = history.list_history()
+        self.assertTrue(listing["trash_accessible"])
+        self.assertEqual(len(listing["batches"]), 1)
+        batch = listing["batches"][0]
+        self.assertEqual(batch["label"], "Limpeza de teste")
+        self.assertEqual(batch["in_trash"], 1)
+        self.assertEqual(batch["items"][0]["status"], "in_trash")
+        self.assertEqual(listing["totals"]["moved_bytes"], 10)
+
+        ok, message = history.restore_move(batch["items"][0]["id"])
+        self.assertTrue(ok, message)
+        self.assertTrue((original / "entry.bin").is_file())
+        self.assertFalse(trashed.exists())
+        self.assertEqual(history.list_history()["batches"][0]["restored"], 1)
+
+        ok, message = history.restore_move(batch["items"][0]["id"])
+        self.assertFalse(ok)
+        self.assertIn("já foi restaurado", message)
+
+    def test_restore_refuses_tampered_occupied_or_unmanaged_paths(self):
+        outside = self.root / "outside"
+        outside.mkdir()
+        history.record_move(feature="junk", original_path=str(self.root / "orig"), trash_path=str(outside))
+        ok, message = history.restore_move(self._newest_entry_id())
+        self.assertFalse(ok)
+        self.assertIn("Lixeira", message)
+        self.assertTrue(outside.exists())
+
+        trashed = self.trash / "orig2"
+        trashed.mkdir()
+        occupied = self.root / "orig2"
+        occupied.mkdir()
+        history.record_move(feature="junk", original_path=str(occupied), trash_path=str(trashed))
+        ok, message = history.restore_move(self._newest_entry_id())
+        self.assertFalse(ok)
+        self.assertIn("Já existe", message)
+        self.assertTrue(trashed.exists())
+
+        keychain = self.trash / "login.keychain-db"
+        keychain.write_bytes(b"k")
+        history.record_move(
+            feature="junk",
+            original_path=os.path.expanduser("~/Library/Keychains/hollyoptimizer-test.keychain-db"),
+            trash_path=str(keychain),
+        )
+        ok, message = history.restore_move(self._newest_entry_id())
+        self.assertFalse(ok)
+        self.assertIn("fora das áreas", message)
+        self.assertTrue(keychain.exists())
+
+        self.assertFalse(history.restore_move("does-not-exist")[0])
+        self.assertFalse(history.restore_move("")[0])
+
+    def test_restore_reports_missing_full_disk_access(self):
+        trashed = self.trash / "item"
+        trashed.write_bytes(b"x")
+        history.record_move(feature="junk", original_path=str(self.root / "item"), trash_path=str(trashed))
+        with mock.patch.object(history, "trash_accessible", return_value=False):
+            listing = history.list_history()
+            ok, message = history.restore_move(self._newest_entry_id())
+        self.assertFalse(listing["trash_accessible"])
+        self.assertEqual(listing["batches"][0]["items"][0]["status"], "unknown")
+        self.assertFalse(ok)
+        self.assertIn("Acesso Total ao Disco", message)
+        self.assertTrue(trashed.exists())
+
+    def test_scan_timeline_and_growth(self):
+        history.record_scan(
+            free_bytes=10, total_bytes=100, cleanable_bytes=5, inventory_bytes=1,
+            categories={"a": {"name": "A", "size_bytes": 100, "cleanable": True}},
+        )
+        history.record_scan(
+            free_bytes=20, total_bytes=100, cleanable_bytes=7, inventory_bytes=1,
+            categories={
+                "a": {"name": "A", "size_bytes": 400, "cleanable": True},
+                "b": {"name": "B", "size_bytes": 50, "cleanable": False},
+                "c": {"name": "C", "size_bytes": 0, "cleanable": True},
+            },
+        )
+        listing = history.list_history()
+        self.assertEqual([scan["free_bytes"] for scan in listing["scans"]], [20, 10])
+        self.assertEqual([item["key"] for item in listing["growth"]], ["a", "b"])
+        self.assertEqual(listing["growth"][0]["delta_bytes"], 300)
+        self.assertEqual(listing["totals"]["scans"], 2)
+
+    def test_startup_labels_have_no_baseline_on_first_scan(self):
+        self.assertIsNone(history.update_startup_labels(["a", "b"]))
+        self.assertEqual(history.update_startup_labels(["a", "c"]), {"a", "b"})
+        self.assertEqual(history.update_startup_labels([]), {"a", "b", "c"})
+
+    def test_native_trash_move_records_history_only_when_a_feature_is_named(self):
+        with tempfile.TemporaryDirectory(dir=os.path.expanduser("~/Downloads")) as temp_dir:
+            item = Path(temp_dir, "cache.bin")
+            item.write_bytes(b"x")
+            foundation = mock.Mock()
+            resulting = mock.Mock()
+            resulting.path.return_value = str(self.trash / "cache.bin")
+            native = foundation.NSFileManager.defaultManager.return_value.trashItemAtURL_resultingItemURL_error_
+            native.return_value = (True, resulting, None)
+            with mock.patch.dict("sys.modules", {"Foundation": foundation}):
+                ok, _ = utils.move_to_trash(str(item))
+                self.assertTrue(ok)
+                self.assertEqual(history.list_history()["totals"]["moves"], 0)
+                ok, message = utils.move_to_trash(str(item), feature="large_files", size_bytes=1, file_count=1)
+            self.assertTrue(ok)
+            self.assertIn("cache.bin", message)
+            listing = history.list_history()
+            self.assertEqual(listing["totals"]["moves"], 1)
+            entry = listing["batches"][0]["items"][0]
+            self.assertEqual(entry["feature"], "large_files")
+            self.assertEqual(entry["original_path"], os.path.realpath(item))
+            self.assertEqual(entry["trash_name"], "cache.bin")
+
+
+class DashboardHealthTests(unittest.TestCase):
+    def test_crash_loops_group_recent_reports_by_process(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            now = time.time()
+
+            def report(name, age_seconds):
+                path = Path(temp_dir, name)
+                path.write_text("{}", encoding="utf-8")
+                os.utime(path, (now - age_seconds, now - age_seconds))
+
+            for index in range(3):
+                report(f"Safari-2026-10-27-08000{index}.ips", 600 * (index + 1))
+            report("Code Helper (Renderer)-2026-10-27-090000.ips", 100)
+            report("Safari-2026-10-20-080000.ips", 10 * 86400)
+            report("notes.txt", 10)
+
+            loops = health.detect_crash_loops(temp_dir, now=now)
+            self.assertEqual([(loop["name"], loop["count"]) for loop in loops], [("Safari", 3)])
+            self.assertEqual(health.detect_crash_loops(os.path.join(temp_dir, "missing"), now=now), [])
+
+    def test_disk_is_evaluated_against_the_goal(self):
+        gb = 1024 ** 3
+        self.assertEqual(health.evaluate_disk({"free_bytes": 50 * gb, "total_bytes": 500 * gb}, 20)["level"], "ok")
+        below = health.evaluate_disk({"free_bytes": 12 * gb, "total_bytes": 500 * gb}, 20)
+        self.assertEqual(below["level"], "attention")
+        self.assertEqual(below["deficit_bytes"], 8 * gb)
+        self.assertEqual(health.evaluate_disk({"free_bytes": 2 * gb, "total_bytes": 500 * gb}, 20)["level"], "critical")
+        self.assertEqual(health.evaluate_disk({}, 20)["level"], "unknown")
+
+    def test_dashboard_health_is_read_only_and_builds_alerts(self):
+        gb = 1024 ** 3
+        with mock.patch.object(
+            health, "get_disk_usage",
+            return_value={"free_bytes": 3 * gb, "total_bytes": 500 * gb, "percentage": 99},
+        ), mock.patch.object(
+            health, "trash_summary",
+            return_value={"items": 4, "size_bytes": 2 * gb, "size_human": "2.00 GB", "accessible": True},
+        ), mock.patch.object(
+            health, "detect_crash_loops", return_value=[{"name": "Foo", "count": 5, "latest_ts": 0}]
+        ), mock.patch.object(health, "load_settings", return_value={"free_space_goal_gb": 20}):
+            report = health.get_dashboard_health()
+        self.assertTrue(report["read_only"])
+        self.assertEqual(
+            [alert["id"] for alert in report["alerts"]],
+            ["disk_critical", "trash_large", "crash_loop:Foo"],
+        )
+
+    def test_trash_summary_degrades_without_full_disk_access(self):
+        with mock.patch.object(health.os, "listdir", side_effect=PermissionError(1, "Operation not permitted")):
+            summary = health.trash_summary()
+        self.assertFalse(summary["accessible"])
+        self.assertEqual(summary["size_bytes"], 0)
+
+
+class UninstallerLastUseTests(unittest.TestCase):
+    def test_last_use_labels_and_unused_threshold(self):
+        now = 1_800_000_000.0
+        self.assertEqual(uninstaller.describe_last_use(now - 3600, 5, now=now)["last_used_label"], "usado hoje")
+        self.assertEqual(uninstaller.describe_last_use(now - 2 * 86400, 5, now=now)["last_used_label"], "usado há 2 dias")
+        old = uninstaller.describe_last_use(now - 120 * 86400, 1, now=now)
+        self.assertTrue(old["unused"])
+        self.assertEqual(old["last_used_days"], 120)
+        running = uninstaller.describe_last_use(now - 120 * 86400, 1, running=True, now=now)
+        self.assertFalse(running["unused"])
+        self.assertEqual(running["last_used_label"], "aberto agora")
+        unknown = uninstaller.describe_last_use(None, 0, now=now)
+        self.assertFalse(unknown["unused"])
+        self.assertIsNone(unknown["last_used_days"])
+
+
+class ProcessQuitTests(unittest.TestCase):
+    def test_quit_requires_fresh_identity_and_a_windowed_app(self):
+        pid = 99998
+        with memory._PROCESS_LOCK:
+            memory._LAST_PROCESS_IDENTITIES.clear()
+        ok, message = memory.quit_application(pid)
+        self.assertFalse(ok)
+        self.assertIn("atualize", message)
+
+        with memory._PROCESS_LOCK:
+            memory._LAST_PROCESS_IDENTITIES[pid] = {
+                "uid": os.getuid(), "start_time": "t", "path": "/usr/local/bin/node",
+            }
+        with mock.patch.object(memory, "_get_process_info", return_value=(os.getuid(), "t", "/usr/local/bin/node")):
+            ok, message = memory.quit_application(pid)
+        self.assertFalse(ok)
+        self.assertIn("Encerrar", message)
+
+        app_path = "/Applications/Test.app/Contents/MacOS/Test"
+        with memory._PROCESS_LOCK:
+            memory._LAST_PROCESS_IDENTITIES[pid] = {"uid": os.getuid(), "start_time": "t", "path": app_path}
+        fake_app = mock.Mock()
+        fake_app.terminate.return_value = True
+        fake_app.localizedName.return_value = "Test"
+        appkit = mock.Mock()
+        appkit.NSRunningApplication.runningApplicationWithProcessIdentifier_.return_value = fake_app
+        with mock.patch.object(memory, "_get_process_info", return_value=(os.getuid(), "t", app_path)), \
+             mock.patch.dict(sys.modules, {"AppKit": appkit}):
+            ok, message = memory.quit_application(pid)
+        self.assertTrue(ok, message)
+        fake_app.terminate.assert_called_once()
+        appkit.NSRunningApplication.runningApplicationWithProcessIdentifier_.assert_called_once_with(pid)
+
+        self.assertFalse(memory.quit_application(True)[0])
+        self.assertFalse(memory.quit_application(1)[0])
+        self.assertFalse(memory.quit_application(os.getpid())[0])
+
+    def test_readiness_levels(self):
+        gb = 1024 ** 3
+        self.assertEqual(memory.describe_readiness(16 * gb, 8 * gb, 0, "normal")["readiness_level"], "ok")
+        self.assertEqual(memory.describe_readiness(16 * gb, 3 * gb, 0, "normal")["readiness_level"], "warning")
+        self.assertEqual(memory.describe_readiness(16 * gb, 8 * gb, 2 * gb, "normal")["readiness_level"], "warning")
+        self.assertEqual(memory.describe_readiness(16 * gb, 1 * gb, 0, "normal")["readiness_level"], "critical")
+        self.assertEqual(memory.describe_readiness(16 * gb, 8 * gb, 0, "critical")["readiness_level"], "critical")
+        self.assertEqual(memory.describe_readiness(16 * gb, 8 * gb, 5 * gb, "normal")["readiness_level"], "critical")
+
+
+class StartupNewItemTests(unittest.TestCase):
+    def test_items_unseen_by_previous_scans_are_flagged(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            Path(temp_dir, "com.example.agent.plist").write_bytes(
+                b'<?xml version="1.0"?><plist version="1.0"><dict>'
+                b'<key>Label</key><string>com.example.agent</string>'
+                b'<key>Program</key><string>/bin/ls</string></dict></plist>'
+            )
+            dirs = {"user_agent": {"name": "Agentes", "path": temp_dir, "sudo_required": False}}
+            with mock.patch.object(startup, "STARTUP_DIRS", dirs), \
+                 mock.patch.object(startup, "_scan_login_items", return_value=[]), \
+                 mock.patch.object(startup, "_loaded_launchd_labels", return_value=set()):
+                with mock.patch("core.history.update_startup_labels", return_value=None):
+                    self.assertFalse(startup.scan_startup()[0]["is_new"])
+                with mock.patch("core.history.update_startup_labels", return_value={"com.other"}):
+                    self.assertTrue(startup.scan_startup()[0]["is_new"])
+                with mock.patch("core.history.update_startup_labels", return_value={"com.example.agent"}):
+                    self.assertFalse(startup.scan_startup()[0]["is_new"])
 
 
 if __name__ == "__main__":

@@ -245,3 +245,55 @@ for (const [type, ascending] of [
         assert.equal(header.icon.textContent, '▼');
     });
 }
+
+test('junk: a category blocked by its running tool renders disabled with the usage badge', async () => {
+    const tbody = { innerHTML: '' };
+    const selectAll = { checked: true };
+    const cleanButton = { disabled: false, classList: { toggle() {} } };
+    const context = vm.createContext({
+        document: {
+            querySelector: selector => (selector === '#junk-table tbody' ? tbody : null),
+            getElementById: id => (id === 'junk-select-all' ? selectAll : cleanButton),
+            querySelectorAll: () => [],
+        },
+        window: { pywebview: { api: { scan_junk: async () => ({
+            xcode: {
+                name: 'Xcode DerivedData', description: 'Builds', size_bytes: 10, size_human: '10 B',
+                count: 1, cleanable: true, blocked: true, blocked_hint: 'Xcode está aberto agora.',
+                usage: { state: 'running', label: 'aberto agora', detail: 'Xcode está em execução' },
+                skipped: 0, deferred_hint: '',
+            },
+            npm: {
+                name: 'Cache do NPM', description: 'Pacotes', size_bytes: 20, size_human: '20 B',
+                count: 2, cleanable: true, blocked: false,
+                usage: { state: 'idle', label: 'parado há 5 dias', detail: '' },
+                skipped: 0, deferred_hint: '',
+            },
+            docker: {
+                name: 'Docker Data', description: 'Inventário', size_bytes: 30, size_human: '30 B',
+                count: 3, cleanable: false, blocked: false, usage: null, skipped: 0, deferred_hint: '',
+            },
+        }) } } },
+        showLoader() {},
+        hideLoader() {},
+        reportScanIssues: async () => {},
+        escapeHtml: value => String(value),
+        updateJunkCleanButton() {},
+    });
+    vm.runInContext(`
+        let scannedJunk = {};
+        ${sourceBetween('async function scanJunk(', 'function updateJunkCleanButton(')}
+    `, context);
+    await vm.runInContext('scanJunk()', context);
+
+    const rows = tbody.innerHTML.split('<tr>').slice(1);
+    assert.equal(rows.length, 3);
+    assert.match(rows[0], /value="xcode"[^>]*disabled/);
+    assert.match(rows[0], /usage-badge running/);
+    assert.match(rows[0], /Xcode está aberto agora\./);
+    assert.doesNotMatch(rows[1], /checkbox"[^>]*disabled/);
+    assert.match(rows[1], /usage-badge idle/);
+    assert.match(rows[2], /value="docker"[^>]*disabled/);
+    assert.match(rows[2], /Revisão manual/);
+    assert.equal(selectAll.checked, false);
+});

@@ -224,6 +224,18 @@ def scan_startup() -> list[dict]:
     login_items = _scan_login_items()
     items.extend(login_items)
 
+    # Anything not seen by a previous scan is flagged "novo": a background
+    # task that appeared since the last look deserves a second glance.
+    try:
+        from . import history
+
+        known = history.update_startup_labels(item["label"] for item in items)
+    except Exception as exc:
+        record_issue("startup", exc, "")
+        known = None
+    for item in items:
+        item["is_new"] = bool(known is not None and item["label"] not in known)
+
     with _SCAN_LOCK:
         _LAST_SCAN_ITEMS.clear()
         _LAST_SCAN_ITEMS.update(

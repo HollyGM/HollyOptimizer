@@ -9,6 +9,30 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 - Empacotamento público assinado e notarizado para distribuição fora da máquina de desenvolvimento.
 
+## [0.8.0] - 2026-10-27
+
+### Adicionado
+
+- Aba **Histórico e Desfazer**: cada lote de limpeza fica registrado localmente (caminho original, nome na Lixeira, tamanho) e um item pode ser devolvido ao lugar de origem enquanto estiver na Lixeira. A restauração exige que o item continue dentro de `~/.Trash`, que o caminho original esteja livre e dentro das áreas administradas, e nunca sobrescreve nada. Sem Acesso Total ao Disco o app avisa e indica "Colocar de Volta" no Finder.
+- **Linha do tempo e "o que mais cresceu"**: cada varredura guarda o espaço livre e o tamanho por categoria; o Dashboard compara com a anterior e explica o que compõe os "Dados do Sistema" neste Mac.
+- **Selo de uso por categoria** — "aberto agora", "usado hoje", "parado há N dias" — a partir dos apps em execução (NSWorkspace), dos processos (`ps`) e da última mudança nas pastas. Xcode DerivedData, Homebrew, Gradle e Playwright ficam bloqueados enquanto a ferramenta roda; a checagem é refeita no momento da limpeza.
+- Novas categorias reversíveis: caches do pnpm, Yarn, Bun, uv, Go, CocoaPods, Homebrew e navegadores do Playwright, e **caches de apps Electron** (VS Code, Slack, Discord, Notion, Claude…): o cache de um app aberto fica de fora (arquivo de lock do Chromium ou nome do app em execução) e a limpeza recusa um app que abriu depois da varredura.
+- Novo inventário, apenas medido: modelos de IA (Hugging Face, Ollama, LM Studio), dados do Claude Code, ambientes do Claude Desktop e dados do Codex.
+- **Avisos no Dashboard**: meta de espaço livre configurável (10 a 200 GB) com aviso abaixo dela e alerta de disco praticamente cheio; tamanho e quantidade de itens na Lixeira; apps em loop de travamento (3 ou mais relatórios nas últimas 24 h).
+- **Inicialização**: itens que não estavam na varredura anterior recebem o selo "novo".
+- **Desinstalador**: data do último uso registrada pelo macOS (Spotlight) em cada app, "aberto agora" para os que estão rodando e filtro "só apps sem uso há 90+ dias".
+- **Segurança**: nova checagem somente leitura de navegadores abertos com porta de depuração remota (`--remote-debugging-port`/`--remote-debugging-pipe`), o canal usado por automações e por ladrões de sessão.
+- **Memória**: indicador "Pronto para tarefa pesada?" (memória disponível, swap e pressão) e o botão **Fechar**, que faz o mesmo pedido de ⌘Q ao app, ao lado de **Encerrar**.
+
+### Corrigido
+
+- Categorias nomeadas que vivem dentro de outra (o cache do pip dentro de `~/Library/Caches`, os relatórios de travamento dentro de `~/Library/Logs`) eram contadas duas vezes no total e, numa limpeza conjunta, a segunda categoria falhava porque a primeira já tinha movido a pasta. Agora a categoria dona é a única que conta e limpa.
+- "Relatórios de Travamento" apontava para `~/Library/Application Support/CrashReporter`, que guarda preferências e não relatórios; passou a cobrir `~/Library/Logs/DiagnosticReports` e `~/Library/Logs/CrashReporter`.
+
+### Testes
+
+- 24 novos testes: preferências, detecção de uso, delegação entre categorias, bloqueio por ferramenta aberta (na varredura e na limpeza), caches Electron, registro e restauração do histórico (inclusive sem Acesso Total ao Disco), avisos do Dashboard, último uso dos apps, Fechar com identidade revalidada, itens novos de inicialização, navegador com controle remoto e a linha bloqueada na interface.
+
 ## [0.7.3] - 2026-10-02
 
 ### Segurança
@@ -88,7 +112,8 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Build nativo para Apple Silicon com suporte opcional a `universal2`.
 - Dependências atualizadas e fixadas para builds reproduzíveis.
 
-[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.3...HEAD
+[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.0...v0.7.1

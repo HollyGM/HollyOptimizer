@@ -136,8 +136,9 @@ def run_permissions_audit(include_automation: bool = True) -> dict:
         _entry(
             "full_disk_access",
             "Acesso Total ao Disco",
-            "Sem ele, varreduras em algumas pastas do seu usuário ficam parciais; "
-            "o restante do aplicativo continua funcionando normalmente.",
+            "Sem ele, varreduras em algumas pastas do seu usuário ficam parciais e o "
+            "app não consegue ler a Lixeira (tamanho no Dashboard e Restaurar no "
+            "Histórico); o restante continua funcionando normalmente.",
             check_full_disk_access(),
         )
     ]

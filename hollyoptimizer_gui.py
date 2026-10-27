@@ -8,8 +8,9 @@ import webview
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from core import ai_assistant
+from core import ai_assistant, health, history
 from core import progress as operation_progress
+from core import settings as app_settings
 from core.apps import delete_leftover, scan_leftovers
 from core.browser_cleaner import (
     BROWSER_CACHE_TARGETS,
@@ -23,7 +24,7 @@ from core.dependencies import (
     clean_homebrew,
     remove_dependency,
 )
-from core.diagnostics import configure_logging, consume_issues
+from core.diagnostics import configure_logging, consume_issues, record_issue
 from core.duplicates import delete_duplicate_files, scan_duplicates
 from core.junk import clean_target, scan_junk
 from core.large_files import delete_large_file, scan_large_files
@@ -32,6 +33,7 @@ from core.memory import (
     get_top_ram_processes,
     kill_process,
     optimize_ram,
+    quit_application,
 )
 from core.network import flush_dns, run_network_diagnostic
 from core.permissions import open_permission_setting, run_permissions_audit
@@ -115,6 +117,31 @@ def _run_heavy(operation: str, fn, *args, **kwargs):
         raise
 
 
+def _record_scan_history(results: dict) -> None:
+    """Keeps the local timeline of free space and category sizes (best-effort)."""
+    try:
+        usage = get_disk_usage()
+        cleanable = sum(
+            int(item.get("size_bytes", 0) or 0)
+            for item in results.values()
+            if item.get("cleanable")
+        )
+        inventory = sum(
+            int(item.get("size_bytes", 0) or 0)
+            for item in results.values()
+            if not item.get("cleanable")
+        )
+        history.record_scan(
+            free_bytes=usage.get("free_bytes", 0),
+            total_bytes=usage.get("total_bytes", 0),
+            cleanable_bytes=cleanable,
+            inventory_bytes=inventory,
+            categories=results,
+        )
+    except Exception as exc:
+        record_issue("history", exc, "")
+
+
 def _validate_path(path: str, *, allow_apps: bool = False) -> str:
     """Validates path exists, is allowed, and is safe to delete."""
     validate_path_sanity(path)
@@ -160,7 +187,9 @@ class JsApi:
     """API exposed to Javascript inside WKWebView."""
 
     def scan_junk(self) -> dict:
-        return _run_heavy("junk", scan_junk)
+        results = _run_heavy("junk", scan_junk)
+        _record_scan_history(results)
+        return results
 
     def clean_junk(self, key: str) -> dict:
         # clean_target returns a structured, non-destructive failure for an
@@ -256,6 +285,9 @@ class JsApi:
     def kill_ram_process(self, pid: int) -> tuple:
         return kill_process(pid)
 
+    def quit_ram_process(self, pid: int) -> tuple:
+        return quit_application(pid)
+
     def optimize_ram(self) -> tuple:
         return optimize_ram()
 
@@ -310,6 +342,31 @@ class JsApi:
 
     def get_disk_usage(self) -> dict:
         return get_disk_usage()
+
+    def get_dashboard_health(self) -> dict:
+        # Read-only: disk versus the user's goal, Trash size and crash loops.
+        return health.get_dashboard_health()
+
+    def get_settings(self) -> dict:
+        return app_settings.load_settings()
+
+    def set_free_space_goal(self, goal_gb) -> dict:
+        return app_settings.set_free_space_goal(goal_gb)
+
+    def get_history(self) -> dict:
+        return history.list_history()
+
+    def begin_history_batch(self, label: str) -> str:
+        if not isinstance(label, str):
+            raise ValueError("Rótulo de lote inválido.")
+        return history.begin_batch(label)
+
+    def restore_history_entry(self, entry_id: str) -> tuple:
+        if not isinstance(entry_id, str) or not entry_id.strip():
+            raise ValueError("Registro inválido.")
+        # Serialised like every other Trash operation; the entry id is the
+        # only thing the interface may name, never a path.
+        return _run_heavy("history_restore", history.restore_move, entry_id)
 
     def empty_trash(self) -> tuple:
         return _run_heavy("empty_trash", empty_trash)

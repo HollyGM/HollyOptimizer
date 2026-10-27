@@ -89,6 +89,8 @@ def get_memory_stats() -> dict:
         "swap_level": "unknown", "swap_label": "Indisponível",
         "percent": 0.0,
         "pressure_level": "unknown", "pressure_label": "Indisponível",
+        "readiness_level": "unknown", "readiness_label": "Indisponível",
+        "headroom_bytes": 0, "headroom_human": "0 B",
     }
     
     # 1. Get total physical memory
@@ -185,7 +187,38 @@ def get_memory_stats() -> dict:
         "pressure_level": pressure_level, "pressure_label": pressure_label,
     })
     stats.update(get_swap_stats())
+    stats.update(
+        describe_readiness(
+            total_mem, available_bytes, stats["swap_used_bytes"], pressure_level
+        )
+    )
     return stats
+
+
+def describe_readiness(
+    total_bytes: int, available_bytes: int, swap_used_bytes: int, pressure_level: str
+) -> dict:
+    """
+    "Pronto para tarefa pesada?" — folga real antes de um build, render ou
+    modelo de IA. Combina a memória disponível, o swap em uso e a pressão que
+    o próprio macOS reporta.
+    """
+    ratio = (available_bytes / total_bytes) if total_bytes > 0 else 0.0
+    if pressure_level == "critical" or ratio < 0.10 or swap_used_bytes >= 4 * 1024 ** 3:
+        level = "critical"
+        label = "Sem folga — feche apps antes de uma tarefa pesada"
+    elif pressure_level == "warning" or ratio < 0.25 or swap_used_bytes >= 1024 ** 3:
+        level = "warning"
+        label = "Folga apertada — feche o que não está usando"
+    else:
+        level = "ok"
+        label = "Pronto para tarefa pesada"
+    return {
+        "readiness_level": level,
+        "readiness_label": label,
+        "headroom_bytes": max(0, int(available_bytes)),
+        "headroom_human": format_size(max(0, int(available_bytes))),
+    }
 
 def get_top_ram_processes() -> list[dict]:
     """
@@ -242,7 +275,9 @@ def get_top_ram_processes() -> list[dict]:
             "pmem": pmem,
             "rss_bytes": rss_bytes,
             "rss_human": format_size(rss_bytes),
-            "path": path
+            "path": path,
+            # Only a windowed app can be asked to quit politely.
+            "is_app": ".app/" in path,
         })
         
     with _PROCESS_LOCK:
@@ -279,37 +314,79 @@ def _get_process_info(pid: int) -> tuple[int, str, str]:
     except ValueError:
         return -1, "", ""
 
-def kill_process(pid: int) -> tuple[bool, str]:
+def _validate_process_target(pid) -> tuple[bool, str, str]:
     """
-    Attempts to kill a process by PID.
-    Blocks killing of system-critical processes.
+    Shared gate for Fechar and Encerrar: the PID must come from the latest
+    listing, still be the same process (uid, start time, path) and never be
+    a system or foreign-user process. Returns (ok, message, executable path).
     """
-    if not isinstance(pid, int):
-        return False, "PID inválido."
+    if not isinstance(pid, int) or isinstance(pid, bool):
+        return False, "PID inválido.", ""
     if pid == os.getpid():
-        return False, f"O processo do {APP_NAME} não pode encerrar a si próprio."
+        return False, f"O processo do {APP_NAME} não pode encerrar a si próprio.", ""
     if pid in PROTECTED_PIDS or pid < 50:
-        return False, f"Processo {pid} é um processo do sistema protegido e não pode ser encerrado."
+        return False, f"Processo {pid} é um processo do sistema protegido e não pode ser encerrado.", ""
 
     with _PROCESS_LOCK:
         expected = dict(_LAST_PROCESS_IDENTITIES.get(pid, {}))
     if not expected:
-        return False, "Processo bloqueado: atualize a lista antes de encerrá-lo."
+        return False, "Processo bloqueado: atualize a lista antes de encerrá-lo.", ""
 
     uid, start_time, process_path = _get_process_info(pid)
     comm = os.path.basename(process_path)
     if uid != os.getuid():
-        return False, "Processos de outro usuário ou do sistema não podem ser encerrados."
+        return False, "Processos de outro usuário ou do sistema não podem ser encerrados.", ""
     if (
         uid != expected.get("uid")
         or start_time != expected.get("start_time")
         or process_path != expected.get("path")
     ):
-        return False, "Processo bloqueado porque o PID foi reutilizado ou mudou desde a listagem."
+        return False, "Processo bloqueado porque o PID foi reutilizado ou mudou desde a listagem.", ""
     if comm in SYSTEM_PROCESSES:
-        return False, f"Processo '{comm}' (PID {pid}) é crítico para o sistema e não pode ser encerrado."
+        return False, f"Processo '{comm}' (PID {pid}) é crítico para o sistema e não pode ser encerrado.", ""
     if process_path.startswith(("/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/")):
-        return False, f"Processos do macOS não podem ser encerrados pelo {APP_NAME}."
+        return False, f"Processos do macOS não podem ser encerrados pelo {APP_NAME}.", ""
+    return True, "", process_path
+
+
+def quit_application(pid: int) -> tuple[bool, str]:
+    """
+    Asks a windowed app to quit the polite way (the same request as ⌘Q), so it
+    can prompt about unsaved documents. Falls back to a clear message when the
+    PID is not an app; Encerrar (SIGTERM) remains the stronger option.
+    """
+    ok, message, process_path = _validate_process_target(pid)
+    if not ok:
+        return False, message
+    if ".app/" not in process_path:
+        return False, "Este processo não é um aplicativo com janela; use Encerrar."
+
+    try:
+        from AppKit import NSRunningApplication
+
+        app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+    except Exception as exc:
+        return False, f"Não foi possível localizar o aplicativo: {exc!s}"
+    if app is None:
+        return False, "O macOS não reconhece este PID como aplicativo; use Encerrar."
+
+    name = str(app.localizedName() or os.path.basename(process_path))
+    if app.terminate():
+        return True, (
+            f"Pedido de fechamento enviado a {name}. Se houver documentos não "
+            "salvos, o app vai perguntar antes de sair."
+        )
+    return False, f"{name} recusou o pedido de fechamento; use Encerrar se precisar."
+
+
+def kill_process(pid: int) -> tuple[bool, str]:
+    """
+    Attempts to kill a process by PID.
+    Blocks killing of system-critical processes.
+    """
+    ok, message, _process_path = _validate_process_target(pid)
+    if not ok:
+        return False, message
 
     try:
         # SIGTERM gives applications a chance to save state and shut down cleanly.

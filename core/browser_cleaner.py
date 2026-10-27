@@ -302,6 +302,9 @@ def clean_browser_cache(browser_key: str) -> dict:
                 path,
                 expected_identity=expected["identity"],
                 allow_content_changes=True,
+                feature="browser_caches",
+                size_bytes=size,
+                file_count=count,
             )
             if success:
                 result["bytes_moved"] += size

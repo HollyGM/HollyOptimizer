@@ -49,6 +49,9 @@ navButtons.forEach(btn => {
         } else if (targetId === 'permissions-panel') {
             stopMemoryMonitor();
             runPermissionsAudit(false, true, true);
+        } else if (targetId === 'history-panel') {
+            stopMemoryMonitor();
+            loadHistory();
         } else {
             stopMemoryMonitor();
         }
@@ -268,6 +271,8 @@ window.addEventListener('pywebviewready', () => {
     loadNetworkPingHeader();
     loadDashboardRam();
     refreshDiskUsage();
+    loadFreeSpaceGoal();
+    loadDashboardHealth();
 
     // Proactively check Full Disk Access on launch (a passive filesystem
     // probe, no side effects) so the Dashboard banner can point the user at
@@ -378,6 +383,20 @@ function bindButtons() {
         document.querySelectorAll('.unit-file-checkbox').forEach(cb => cb.checked = e.target.checked);
     });
     document.getElementById('uninstaller-search').addEventListener('input', filterInstalledApps);
+    document.getElementById('uninstaller-unused-only').addEventListener('change', filterInstalledApps);
+
+    // 12. Dashboard health + free-space goal
+    document.getElementById('free-space-goal').addEventListener('change', saveFreeSpaceGoal);
+
+    // 13. History / undo panel
+    document.getElementById('btn-refresh-history').addEventListener('click', loadHistory);
+    document.getElementById('btn-history-open-fda').addEventListener('click', () => {
+        openSecuritySetting('full_disk_access');
+    });
+    document.getElementById('history-batches').addEventListener('click', (event) => {
+        const button = event.target.closest('.history-restore-btn');
+        if (button) restoreHistoryEntry(button.dataset.entryId, button);
+    });
     cancelOperationBtn.addEventListener('click', async () => {
         if (!activeOperation) return;
         cancelOperationBtn.disabled = true;
@@ -399,12 +418,15 @@ async function runCompleteScan() {
         let totalJunkBytes = 0;
         let manualReviewBytes = 0;
         for (let key in scannedJunk) {
-            if (scannedJunk[key].cleanable) {
+            if (scannedJunk[key].cleanable && !scannedJunk[key].blocked) {
                 totalJunkBytes += scannedJunk[key].size_bytes;
-            } else {
+            } else if (!scannedJunk[key].cleanable) {
                 manualReviewBytes += scannedJunk[key].size_bytes;
             }
         }
+        const blockedNames = Object.values(scannedJunk)
+            .filter(item => item.cleanable && item.blocked && item.size_bytes > 0)
+            .map(item => item.name);
 
         // 2. Scan cache-only browser locations
         loaderMessage.textContent = "Analisando caches temporários dos navegadores...";
@@ -448,10 +470,18 @@ async function runCompleteScan() {
         // Update Main Status text
         const totalSavings = totalJunkBytes + totalBrowserCacheBytes;
         const manualNote = manualReviewBytes > 0
-            ? ` ${formatBytes(manualReviewBytes)} em categorias de revisão manual (Docker/Xcode) não entram na limpeza automática.`
+            ? ` ${formatBytes(manualReviewBytes)} em categorias de revisão manual (Docker/Xcode/modelos de IA) não entram na limpeza automática.`
+            : '';
+        const blockedNote = blockedNames.length
+            ? ` ${blockedNames.join(', ')} ficaram de fora porque a ferramenta está aberta.`
             : '';
         document.getElementById('system-status-msg').textContent = "Varredura Concluída!";
-        document.getElementById('system-status-sub').textContent = `${formatBytes(totalSavings)} de lixo e caches podem ser movidos para a Lixeira. ${scannedLeftovers.length} sobra(s) aguardam revisão manual.${manualNote}`;
+        document.getElementById('system-status-sub').textContent = `${formatBytes(totalSavings)} de lixo e caches podem ser movidos para a Lixeira. ${scannedLeftovers.length} sobra(s) aguardam revisão manual.${manualNote}${blockedNote}`;
+
+        // Insights (what grew, what "System Data" is made of) and the health
+        // strip are best-effort and never block the scan result.
+        renderScanInsights(scannedJunk);
+        loadDashboardHealth();
 
         // Fire-and-forget: never blocks the scan result on an optional,
         // on-device-only rewrite of the sentence above.
@@ -497,7 +527,7 @@ async function handleMainScanClick() {
             if (container) container.classList.remove('ready');
         }
     } else if (dashboardState === 'scanned') {
-        const junkKeys = Object.keys(scannedJunk).filter(k => scannedJunk[k].cleanable && scannedJunk[k].size_bytes > 0);
+        const junkKeys = Object.keys(scannedJunk).filter(k => scannedJunk[k].cleanable && !scannedJunk[k].blocked && scannedJunk[k].size_bytes > 0);
         const browserKeys = Object.keys(scannedBrowserCaches).filter(key => {
             const browser = scannedBrowserCaches[key];
             return browser.accessible && !browser.running && browser.size_bytes > 0;
@@ -524,6 +554,7 @@ async function handleMainScanClick() {
 
 async function runCompleteFixes() {
     await window.pywebview.api.reset_auth_state();
+    await beginHistoryBatch('Varredura Completa — correções');
     showLoader("Executando todas as correções e limpezas...");
     
     let totalFreed = 0;
@@ -533,7 +564,7 @@ async function runCompleteFixes() {
     // DeviceSupport) are never part of the automatic batch.
     try {
         for (let key in scannedJunk) {
-            if (scannedJunk[key].cleanable && scannedJunk[key].size_bytes > 0) {
+            if (scannedJunk[key].cleanable && !scannedJunk[key].blocked && scannedJunk[key].size_bytes > 0) {
                 loaderMessage.textContent = `Limpando ${scannedJunk[key].name}...`;
                 const result = await window.pywebview.api.clean_junk(key);
                 totalFreed += result.bytes_moved || 0;
@@ -580,6 +611,7 @@ async function runCompleteFixes() {
     
     // Browser caches require a new explicit analysis after this operation.
     scannedBrowserCaches = {};
+    loadDashboardHealth();
 
     document.getElementById('system-status-msg').textContent = errors.length
         ? "Correções concluídas parcialmente"
@@ -615,8 +647,15 @@ async function scanJunk() {
         for (let key in scannedJunk) {
             const data = scannedJunk[key];
 
-            const checkboxState = (data.cleanable && data.size_bytes > 0) ? '' : 'disabled';
+            const checkboxState = (data.cleanable && data.size_bytes > 0 && !data.blocked) ? '' : 'disabled';
             const reviewBadge = data.cleanable ? '' : ' <span class="color-warning">(Revisão manual)</span>';
+            const usage = data.usage || null;
+            const usageBadge = usage
+                ? `<span class="usage-badge ${escapeHtml(usage.state || 'unknown')}" title="${escapeHtml(usage.detail || '')}">${escapeHtml(usage.label || '')}</span>`
+                : '<span class="color-muted">—</span>';
+            const blockedNote = data.blocked
+                ? `<div class="junk-blocked-note">${escapeHtml(data.blocked_hint)}</div>`
+                : '';
 
             // Items the safety gate refused used to disappear without a trace,
             // so the reported total quietly understated the disk.
@@ -637,8 +676,9 @@ async function scanJunk() {
                     <td><input type="checkbox" class="junk-checkbox" value="${escapeHtml(key)}" aria-label="Selecionar ${escapeHtml(data.name)}" ${checkboxState}></td>
                     <td><strong>${escapeHtml(data.name)}</strong>${reviewBadge}</td>
                     <td class="${data.size_bytes > 0 ? 'color-warning' : ''}">${escapeHtml(data.size_human)}</td>
+                    <td>${usageBadge}</td>
                     <td>${data.count}</td>
-                    <td>${escapeHtml(data.description)}${skippedNote}${deferredNote}</td>
+                    <td>${escapeHtml(data.description)}${blockedNote}${skippedNote}${deferredNote}</td>
                 </tr>
             `;
         }
@@ -648,7 +688,7 @@ async function scanJunk() {
         updateJunkCleanButton();
         
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Erro ao escanear lixo: ${escapeHtml(err.message || err)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Erro ao escanear lixo: ${escapeHtml(err.message || err)}</td></tr>`;
     } finally {
         hideLoader();
     }
@@ -673,6 +713,7 @@ async function cleanSelectedJunk() {
     if (!await showConfirm('Deseja limpar os itens selecionados? Os arquivos serão movidos para a Lixeira.')) return;
     
     await window.pywebview.api.reset_auth_state();
+    await beginHistoryBatch('Lixo do Sistema');
     showLoader("Limpando arquivos selecionados...");
     let totalFreed = 0;
     const failures = [];
@@ -756,6 +797,7 @@ async function cleanSelectedLeftovers() {
     if (!confirmDelete) return;
     
     await window.pywebview.api.reset_auth_state();
+    await beginHistoryBatch('Sobras de Apps');
     showLoader("Removendo sobras de apps...");
     let freedBytes = 0;
     const failures = [];
@@ -978,10 +1020,15 @@ async function scanStartup() {
             const loadedBadge = (item.kind !== 'login_item' && item.is_loaded)
                 ? ' <span class="badge active" title="Carregado no launchd agora">em execução</span>'
                 : '';
+            // First seen by this scan: a background task that appeared since
+            // the previous look deserves a second glance.
+            const newBadge = item.is_new
+                ? ' <span class="badge new" title="Não estava na varredura anterior">novo</span>'
+                : '';
 
             html += `
                 <tr>
-                    <td>${statusBadge}${loadedBadge}</td>
+                    <td>${statusBadge}${loadedBadge}${newBadge}</td>
                     <td>${escapeHtml(item.category_name)}</td>
                     <td><strong>${escapeHtml(item.label)}</strong></td>
                     <td class="color-muted">${escapeHtml(item.exec_path || 'Comando dinâmico')}</td>
@@ -1000,6 +1047,14 @@ async function scanStartup() {
                 toggleStartup(parseInt(button.dataset.startupIndex, 10));
             });
         });
+        const newItems = scannedStartup.filter(item => item.is_new);
+        if (newItems.length) {
+            showToast(
+                `${newItems.length} item(ns) de inicialização novo(s) desde a última varredura: ${newItems.slice(0, 3).map(item => item.label).join(', ')}${newItems.length > 3 ? '…' : ''}`,
+                'warning',
+                9000
+            );
+        }
         
     } catch (err) {
         tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Erro ao mapear startup: ${escapeHtml(err.message || err)}</td></tr>`;
@@ -1129,6 +1184,7 @@ async function cleanSelectedLargeFiles() {
     );
     if (!confirmDelete) return;
     
+    await beginHistoryBatch('Arquivos Grandes');
     showLoader("Movendo arquivos grandes para a Lixeira...");
     let freedBytes = 0;
     const failures = [];
@@ -1246,6 +1302,7 @@ async function cleanSelectedDuplicates() {
     );
     if (!confirmDelete) return;
     
+    await beginHistoryBatch('Duplicados');
     showLoader("Removendo arquivos duplicados...");
     try {
         const result = await window.pywebview.api.delete_duplicate_files(targets);
@@ -1346,6 +1403,7 @@ async function cleanSelectedBrowserCaches() {
     );
     if (!confirmed) return;
 
+    await beginHistoryBatch('Navegadores');
     showLoader('Movendo caches temporários para a Lixeira...');
     let bytesMoved = 0;
     const errors = [];
@@ -1688,10 +1746,14 @@ async function loadNetworkPingHeader() {
 
 // ==================== APP UNINSTALLER PANEL ====================
 function filterInstalledApps() {
-    const query = document.getElementById('uninstaller-search').value.toLowerCase().trim();
+    const query = (document.getElementById('uninstaller-search').value || '').toLowerCase().trim();
+    const unusedToggle = document.getElementById('uninstaller-unused-only');
+    const unusedOnly = Boolean(unusedToggle && unusedToggle.checked);
     document.querySelectorAll('#uninstaller-app-list .app-item').forEach(item => {
         const name = item.dataset.name || '';
-        item.style.display = !query || name.includes(query) ? '' : 'none';
+        const matchesQuery = !query || name.includes(query);
+        const matchesUnused = !unusedOnly || item.dataset.unused === '1';
+        item.style.display = matchesQuery && matchesUnused ? '' : 'none';
     });
 }
 
@@ -1719,19 +1781,28 @@ async function loadInstalledApps() {
         }
 
         let html = '';
+        let unusedCount = 0;
         installedApps.forEach((app, idx) => {
+            if (app.unused) unusedCount += 1;
+            const usageClass = app.running ? 'running' : (app.unused ? 'unused' : '');
+            const usageLabel = app.last_used_label
+                ? ` <span class="app-item-usage ${usageClass}">· ${escapeHtml(app.last_used_label)}</span>`
+                : '';
             html += `
-                <li class="app-item" id="app-item-${idx}" data-index="${idx}" data-name="${escapeHtml(app.name.toLowerCase())}" role="button" tabindex="0">
+                <li class="app-item" id="app-item-${idx}" data-index="${idx}" data-name="${escapeHtml(app.name.toLowerCase())}" data-unused="${app.unused ? '1' : '0'}" role="button" tabindex="0">
                     <span class="app-item-icon" id="app-icon-${idx}">📦</span>
                     <div class="app-item-info">
                         <span class="app-item-name">${escapeHtml(app.name)}</span>
-                        <span class="app-item-meta">v${escapeHtml(app.version)} - ${escapeHtml(app.size_human)}</span>
+                        <span class="app-item-meta">v${escapeHtml(app.version)} - ${escapeHtml(app.size_human)}${usageLabel}</span>
                     </div>
                 </li>
             `;
         });
 
         listEl.innerHTML = html;
+        const unusedCountEl = document.getElementById('uninstaller-unused-count');
+        if (unusedCountEl) unusedCountEl.textContent = unusedCount ? `(${unusedCount})` : '';
+        filterInstalledApps();
 
         listEl.querySelectorAll('.app-item[data-index]').forEach(item => {
             const activate = () => selectApp(parseInt(item.dataset.index));
@@ -1798,7 +1869,9 @@ async function selectApp(idx) {
     
     // Populate header info
     document.getElementById('unit-app-name').textContent = app.name;
-    document.getElementById('unit-app-version').textContent = `v${app.version}`;
+    document.getElementById('unit-app-version').textContent = app.last_used_label
+        ? `v${app.version} · ${app.last_used_label}`
+        : `v${app.version}`;
     document.getElementById('unit-app-size').textContent = app.size_human;
 
     const iconContainer = document.getElementById('unit-app-icon-container');
@@ -1871,6 +1944,7 @@ async function runUninstall() {
     if (!confirmUninstall) return;
     
     await window.pywebview.api.reset_auth_state();
+    await beginHistoryBatch(`Desinstalar ${app.name}`);
     showLoader(`Desinstalando ${app.name}...`);
     
     try {
@@ -2000,6 +2074,15 @@ async function loadMemoryStats() {
                 ? 'Swap: indisponível'
                 : `Swap: ${stats.swap_used_human} em uso — ${stats.swap_label}`;
         }
+
+        const readinessBadge = document.getElementById('ram-readiness-status');
+        if (readinessBadge) {
+            const level = stats.readiness_level || 'unknown';
+            readinessBadge.className = `ram-pressure-badge pressure-${level} mt-15`;
+            readinessBadge.textContent = level === 'unknown'
+                ? 'Tarefa pesada: indisponível'
+                : `${stats.readiness_label} · ${stats.headroom_human} de folga`;
+        }
     } catch (err) {
         console.error("Error loading RAM stats:", err);
     }
@@ -2038,14 +2121,22 @@ async function loadRamProcesses() {
                     </td>
                     <td class="color-warning">${proc.rss_human} <small class="color-muted">(${proc.pmem}%)</small></td>
                     <td>
-                        <button class="btn-kill" data-pid="${proc.pid}" data-name="${safeName}">Encerrar</button>
+                        <div class="process-actions">
+                            ${proc.is_app ? `<button class="btn-quit" data-pid="${proc.pid}" data-name="${safeName}" title="Pede ao app para sair, como ⌘Q">Fechar</button>` : ''}
+                            <button class="btn-kill" data-pid="${proc.pid}" data-name="${safeName}" title="Encerra o processo (SIGTERM)">Encerrar</button>
+                        </div>
                     </td>
                 </tr>
             `;
         });
         tbody.innerHTML = html;
         
-        // Event delegation for kill buttons
+        // Event delegation for quit/kill buttons
+        tbody.querySelectorAll('.btn-quit[data-pid]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                quitRamProcess(parseInt(btn.dataset.pid), btn.dataset.name);
+            });
+        });
         tbody.querySelectorAll('.btn-kill[data-pid]').forEach(btn => {
             btn.addEventListener('click', () => {
                 killRamProcess(parseInt(btn.dataset.pid), btn.dataset.name);
@@ -2073,6 +2164,30 @@ async function killRamProcess(pid, name) {
         loadDashboardRam();
     } catch (err) {
         showToast(`Erro ao encerrar processo: ${err.message || err}`, 'error');
+    } finally {
+        hideLoader();
+    }
+}
+
+async function quitRamProcess(pid, name) {
+    const confirmed = await showConfirm(
+        `Pedir para "${name}" (PID ${pid}) fechar? É o mesmo pedido de ⌘Q: o app pode perguntar sobre documentos não salvos antes de sair.`,
+        { title: 'Fechar aplicativo', confirmText: 'Fechar' }
+    );
+    if (!confirmed) return;
+
+    showLoader(`Pedindo para ${name} fechar...`);
+    try {
+        const [success, msg] = await window.pywebview.api.quit_ram_process(pid);
+        showToast(msg, success ? 'success' : 'warning', 6000);
+        // Give the app a moment to actually leave before refreshing the list.
+        setTimeout(() => {
+            loadRamProcesses();
+            loadMemoryStats();
+            loadDashboardRam();
+        }, 1500);
+    } catch (err) {
+        showToast(`Erro ao fechar o aplicativo: ${err.message || err}`, 'error');
     } finally {
         hideLoader();
     }
@@ -2128,6 +2243,7 @@ async function handleEmptyTrash() {
         finderUnavailable = Boolean(result[2]);
         showToast(result[1], result[0] ? 'success' : 'error', result[0] ? 5000 : 10000);
         await refreshDiskUsage();
+        loadDashboardHealth();
     } catch (e) {
         showToast(`Não foi possível esvaziar a Lixeira: ${e.message || e}`, "error", 10000);
     } finally {
@@ -2153,6 +2269,7 @@ async function handleEmptyTrash() {
         const result = await window.pywebview.api.empty_trash_local_permanent();
         showToast(result[1], result[0] ? 'success' : 'error', result[0] ? 6000 : 10000);
         await refreshDiskUsage();
+        loadDashboardHealth();
     } catch (e) {
         showToast(`Falha na exclusão permanente local: ${e.message || e}`, "error", 10000);
     } finally {
@@ -2178,6 +2295,253 @@ async function refreshDiskUsage() {
             document.getElementById('dash-disk-bar').style.width = usage.percentage + "%";
         }
     } catch(e) {}
+}
+
+// ==================== DASHBOARD HEALTH, GOAL & INSIGHTS ====================
+async function loadDashboardHealth() {
+    try {
+        const report = await window.pywebview.api.get_dashboard_health();
+        renderHealthAlerts(report.alerts || []);
+
+        const trashEl = document.getElementById('dash-trash-size');
+        if (trashEl) {
+            const trash = report.trash || {};
+            trashEl.textContent = trash.accessible
+                ? `${trash.size_human} (${trash.items} ${trash.items === 1 ? 'item' : 'itens'})`
+                : 'Sem acesso à Lixeira';
+        }
+
+        const goalStatus = document.getElementById('dash-disk-goal-status');
+        if (goalStatus && report.disk) {
+            const disk = report.disk;
+            goalStatus.className = `disk-goal-status ${disk.level}`;
+            if (disk.level === 'ok') goalStatus.textContent = `✓ ${disk.free_human} livres`;
+            else if (disk.level === 'unknown') goalStatus.textContent = 'Indisponível';
+            else goalStatus.textContent = `Faltam ${disk.deficit_human} para a meta`;
+        }
+    } catch (err) {
+        console.warn('Não foi possível ler os avisos do Dashboard:', err);
+    }
+}
+
+function renderHealthAlerts(alerts) {
+    const container = document.getElementById('health-alerts');
+    if (!container) return;
+    container.innerHTML = alerts.map(alert => `
+        <div class="access-guidance glass health-alert level-${escapeHtml(alert.level)}">
+            <div>
+                <strong>${escapeHtml(alert.title)}</strong>
+                <span>${escapeHtml(alert.detail)}</span>
+            </div>
+            ${alert.nav ? `<button class="btn warning btn-sm health-alert-nav" data-nav="${escapeHtml(alert.nav)}">Ver</button>` : ''}
+        </div>
+    `).join('');
+    container.querySelectorAll('.health-alert-nav').forEach(button => {
+        button.addEventListener('click', () => {
+            const target = document.querySelector(`.nav-btn[data-target="${button.dataset.nav}"]`);
+            if (target) target.click();
+        });
+    });
+}
+
+async function loadFreeSpaceGoal() {
+    const select = document.getElementById('free-space-goal');
+    if (!select) return;
+    try {
+        const settings = await window.pywebview.api.get_settings();
+        const goal = String(settings.free_space_goal_gb);
+        if (!Array.from(select.options).some(option => option.value === goal)) {
+            const option = document.createElement('option');
+            option.value = goal;
+            option.textContent = `${goal} GB`;
+            select.appendChild(option);
+        }
+        select.value = goal;
+    } catch (_) {
+        // The default shown in the select is also the backend default.
+    }
+}
+
+async function saveFreeSpaceGoal(event) {
+    const value = parseInt(event.target.value, 10);
+    try {
+        await window.pywebview.api.set_free_space_goal(value);
+        showToast(`Meta de espaço livre: ${value} GB.`, 'info', 3000);
+        await loadDashboardHealth();
+    } catch (err) {
+        showToast(`Não foi possível salvar a meta: ${err.message || err}`, 'error');
+    }
+}
+
+async function renderScanInsights(junkResults) {
+    const box = document.getElementById('scan-insights');
+    const growthList = document.getElementById('insights-growth');
+    const breakdownList = document.getElementById('insights-breakdown');
+    if (!box || !growthList || !breakdownList) return;
+
+    const entries = Object.values(junkResults || {})
+        .filter(item => Number(item.size_bytes) > 0)
+        .sort((a, b) => Number(b.size_bytes) - Number(a.size_bytes))
+        .slice(0, 7);
+    breakdownList.innerHTML = entries.length
+        ? entries.map(item => `
+            <li>
+                <span>${escapeHtml(item.name)}${item.cleanable ? '' : ' <small class="color-muted">(revisão manual)</small>'}</span>
+                <strong>${escapeHtml(item.size_human)}</strong>
+            </li>`).join('')
+        : '<li class="empty">Nada relevante encontrado.</li>';
+
+    let growth = [];
+    try {
+        const report = await window.pywebview.api.get_history();
+        growth = report.growth || [];
+    } catch (_) {
+        growth = [];
+    }
+    growthList.innerHTML = growth.length
+        ? growth.map(item => `
+            <li>
+                <span>${escapeHtml(item.name)}</span>
+                <strong class="color-warning">+${escapeHtml(item.delta_human)} <small class="color-muted">(${escapeHtml(item.after_human)})</small></strong>
+            </li>`).join('')
+        : '<li class="empty">Sem comparação ainda: esta é a primeira varredura registrada, ou nada cresceu desde a anterior.</li>';
+    box.hidden = false;
+}
+
+// ==================== HISTORY & UNDO PANEL ====================
+let historyRequestId = 0;
+const HISTORY_STATE_LABELS = {
+    in_trash: 'na Lixeira',
+    restored: 'restaurado',
+    gone: 'já saiu da Lixeira',
+    unknown: 'sem acesso à Lixeira',
+};
+const HISTORY_FEATURE_NAMES = {
+    junk: 'Lixo do Sistema',
+    browser_caches: 'Navegadores',
+    leftovers: 'Sobras de Apps',
+    large_files: 'Arquivos Grandes',
+    duplicates: 'Duplicados',
+    uninstaller: 'Desinstalador',
+};
+
+function formatDateTime(timestamp) {
+    if (!timestamp) return '';
+    return new Date(timestamp * 1000).toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+}
+
+async function beginHistoryBatch(label) {
+    // Groups the moves that follow under one entry of the Histórico tab.
+    // History is best-effort: a failure here never blocks a cleanup.
+    try {
+        await window.pywebview.api.begin_history_batch(label);
+    } catch (_) {}
+}
+
+async function loadHistory() {
+    const requestId = ++historyRequestId;
+    const button = document.getElementById('btn-refresh-history');
+    const batchesEl = document.getElementById('history-batches');
+    if (button) button.disabled = true;
+    try {
+        const report = await window.pywebview.api.get_history();
+        if (requestId !== historyRequestId) return;
+        renderHistory(report);
+    } catch (err) {
+        batchesEl.innerHTML = `<div class="security-placeholder glass">Não foi possível ler o histórico: ${escapeHtml(err.message || err)}</div>`;
+    } finally {
+        if (button && requestId === historyRequestId) button.disabled = false;
+    }
+}
+
+function renderHistory(report) {
+    const warning = document.getElementById('history-trash-warning');
+    if (warning) warning.hidden = Boolean(report.trash_accessible);
+
+    const totals = report.totals || { moves: 0, moved_human: '0 B', scans: 0 };
+    document.getElementById('history-total-moved').textContent = totals.moved_human;
+    document.getElementById('history-total-count').textContent = totals.moves
+        ? `${totals.moves} item(ns) em ${report.batches.length} lote(s) · ${totals.scans} varredura(s) registrada(s)`
+        : 'Nenhuma limpeza registrada ainda.';
+
+    const timeline = document.getElementById('history-timeline');
+    timeline.innerHTML = (report.scans || []).length
+        ? report.scans.slice(0, 6).map(scan => `
+            <li>
+                <span>${escapeHtml(formatDateTime(scan.ts))}</span>
+                <strong>${escapeHtml(scan.free_human)} livres <small class="color-muted">· ${escapeHtml(scan.cleanable_human)} limpáveis</small></strong>
+            </li>`).join('')
+        : '<li class="empty">Faça uma varredura para começar a linha do tempo.</li>';
+
+    const batchesEl = document.getElementById('history-batches');
+    if (!(report.batches || []).length) {
+        batchesEl.innerHTML = '<div class="security-placeholder glass">Nenhuma limpeza registrada ainda. Tudo o que o app mover a partir de agora aparece aqui, com a opção de restaurar enquanto estiver na Lixeira.</div>';
+        return;
+    }
+
+    const MAX_ITEMS = 40;
+    batchesEl.innerHTML = report.batches.map(batch => {
+        const items = batch.items.slice(0, MAX_ITEMS).map(item => {
+            const action = item.status === 'in_trash'
+                ? `<button class="btn btn-ghost btn-sm history-restore-btn" data-entry-id="${escapeHtml(item.id)}">Restaurar</button>`
+                : '<span></span>';
+            return `
+                <div class="history-item">
+                    <div>
+                        <span class="history-name" title="${escapeHtml(item.original_path)}">${escapeHtml(item.name)}</span>
+                        <span class="history-path">${escapeHtml(item.original_path)}</span>
+                    </div>
+                    <span class="color-muted">${escapeHtml(item.size_human)}</span>
+                    <span class="history-state ${escapeHtml(item.status)}">${escapeHtml(HISTORY_STATE_LABELS[item.status] || item.status)}</span>
+                    ${action}
+                </div>`;
+        }).join('');
+        const more = batch.items.length > MAX_ITEMS
+            ? `<div class="history-more">+${batch.items.length - MAX_ITEMS} item(ns) neste lote</div>`
+            : '';
+        const features = (batch.features || []).map(key => HISTORY_FEATURE_NAMES[key] || key).join(', ');
+        return `
+            <article class="glass history-batch">
+                <div class="history-batch-header">
+                    <div>
+                        <strong>${escapeHtml(batch.label)}</strong>
+                        <span class="history-batch-meta">${escapeHtml(formatDateTime(batch.ts))}${features ? ' · ' + escapeHtml(features) : ''}</span>
+                    </div>
+                    <div class="history-batch-stats">
+                        <span class="badge active">${escapeHtml(batch.size_human)}</span>
+                        ${batch.in_trash ? `<span class="badge disabled">${batch.in_trash} na Lixeira</span>` : ''}
+                        ${batch.restored ? `<span class="badge active">${batch.restored} restaurado(s)</span>` : ''}
+                        ${batch.gone ? `<span class="badge disabled">${batch.gone} já removido(s)</span>` : ''}
+                        ${batch.unknown ? `<span class="badge new">${batch.unknown} sem acesso</span>` : ''}
+                    </div>
+                </div>
+                <div class="history-items">${items}${more}</div>
+            </article>`;
+    }).join('');
+}
+
+async function restoreHistoryEntry(entryId, button) {
+    if (!entryId) return;
+    const confirmed = await showConfirm(
+        'Devolver este item da Lixeira ao caminho original? Nada é sobrescrito: se já existir algo no lugar, a restauração é recusada.',
+        { title: 'Restaurar item', confirmText: 'Restaurar' }
+    );
+    if (!confirmed) return;
+
+    if (button) button.disabled = true;
+    showLoader('Restaurando item da Lixeira...');
+    try {
+        const [success, message] = await window.pywebview.api.restore_history_entry(entryId);
+        showToast(message, success ? 'success' : 'warning', success ? 5000 : 9000);
+    } catch (err) {
+        showToast(`Não foi possível restaurar: ${err.message || err}`, 'error');
+    } finally {
+        hideLoader();
+        await loadHistory();
+        loadDashboardHealth();
+    }
 }
 
 // ==================== GENERIC TABLE FILTERING & SORTING ====================
@@ -2216,12 +2580,9 @@ function setupTableInteractions() {
             const term = e.target.value.toLowerCase();
             const section = e.target.closest('.panel') || e.target.closest('.uninstaller-grid');
             if(!section) return;
-            // Handle uninstaller list specifically
+            // Handle uninstaller list specifically (name + "sem uso" filter)
             if(e.target.id === 'uninstaller-search') {
-                const lis = section.querySelectorAll('#uninstaller-app-list li:not(.empty-state)');
-                lis.forEach(li => {
-                    li.style.display = li.textContent.toLowerCase().includes(term) ? '' : 'none';
-                });
+                filterInstalledApps();
                 return;
             }
             const tbody = section.querySelector('tbody');

@@ -409,7 +409,13 @@ def _delete_duplicate_files(selections: list[dict]) -> dict:
                 previous["size"],
                 previous["mtime_ns"],
             )
-            success, message = move_to_trash(path, expected_identity=expected_identity)
+            success, message = move_to_trash(
+                path,
+                expected_identity=expected_identity,
+                feature="duplicates",
+                size_bytes=previous["size"],
+                file_count=1,
+            )
             if success:
                 result["bytes_freed"] += previous["disk_bytes"]
                 result["deleted"] += 1

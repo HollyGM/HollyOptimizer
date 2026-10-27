@@ -1,4 +1,12 @@
+import re
+
 from .utils import run_command
+
+# A browser started with one of these flags accepts commands from any local
+# program: tabs, cookies and sessions become readable by whatever connects to
+# the port. Legitimate only for automation the user started on purpose.
+_REMOTE_DEBUG_FLAGS = ("--remote-debugging-port", "--remote-debugging-pipe")
+_APP_NAME_PATTERN = re.compile(r"/([^/]+)\.app/Contents/MacOS/")
 
 SECURITY_SETTINGS = {
     "full_disk_access": "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
@@ -40,6 +48,64 @@ def _run_check(command, positive_terms, negative_terms):
     if any(term in normalized for term in positive_terms):
         return True, detail
     return None, detail
+
+
+def find_remote_debugging_browsers(ps_output: str) -> list[str]:
+    """Names of apps whose main process carries a remote-debugging flag."""
+    found = []
+    for line in ps_output.splitlines():
+        lowered = line.casefold()
+        if not any(flag in lowered for flag in _REMOTE_DEBUG_FLAGS):
+            continue
+        # Helper processes (--type=renderer, gpu-process...) repeat the parent
+        # command line; the main process is the one without --type.
+        if "--type=" in lowered:
+            continue
+        match = _APP_NAME_PATTERN.search(line)
+        if match:
+            name = match.group(1)
+        else:
+            name = line.strip().split(" --", 1)[0].strip().rsplit("/", 1)[-1] or "processo"
+        if name not in found:
+            found.append(name)
+    return found
+
+
+def _remote_debugging_check() -> dict:
+    code, stdout, stderr = run_command(["/bin/ps", "-A", "-o", "command="], timeout=30)
+    recommendation = (
+        "Feche esse navegador e abra-o normalmente. Com a depuração remota ligada, "
+        "qualquer programa local pode ler abas, cookies e sessões; isso só é "
+        "legítimo em automações que você mesmo iniciou."
+    )
+    settings_hint = "Feche o navegador pelo Dock ou pelo Monitor de Atividade e reabra-o."
+    if code != 0:
+        return _result(
+            "remote_debugging",
+            "Navegador com controle remoto",
+            None,
+            stderr or "Não foi possível listar os processos.",
+            recommendation,
+            settings_hint,
+        )
+    exposed = find_remote_debugging_browsers(stdout)
+    if exposed:
+        detail = (
+            "Depuração remota ativa em: " + ", ".join(exposed) + ". "
+            "Outro programa pode estar controlando esse navegador."
+        )
+        return _result(
+            "remote_debugging", "Navegador com controle remoto", False, detail,
+            recommendation, settings_hint,
+        )
+    return _result(
+        "remote_debugging",
+        "Navegador com controle remoto",
+        True,
+        "Nenhum navegador aberto com porta de depuração remota.",
+        recommendation,
+        settings_hint,
+    )
 
 
 def run_security_audit() -> dict:
@@ -115,6 +181,8 @@ def run_security_audit() -> dict:
                 spec["settings"],
             )
         )
+
+    checks.append(_remote_debugging_check())
 
     attention = sum(check["status"] == "attention" for check in checks)
     unknown = sum(check["status"] == "unknown" for check in checks)

@@ -134,7 +134,10 @@ def run_self_test(resource_root: str) -> int:
             "security_audit_read_only",
             security.get("read_only") is True
             and security_ids
-            == {"filevault", "firewall", "gatekeeper", "sip", "automatic_updates"},
+            == {
+                "filevault", "firewall", "gatekeeper", "sip", "automatic_updates",
+                "remote_debugging",
+            },
         )
     except Exception as exc:
         add("security_audit_read_only", False, type(exc).__name__)

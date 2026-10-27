@@ -30,6 +30,10 @@
                     <svg viewBox="0 0 24 24" class="nav-icon"><path d="M12 2 4 5v6c0 5.05 3.41 9.76 8 11 4.59-1.24 8-5.95 8-11V5l-8-3zm3.5 6.5-4.6 4.6L8.5 10.7l-1.1 1.1 3.5 3.5 5.7-5.7-1.1-1.1z"/></svg>
                     <span>Permissões</span>
                 </button>
+                <button class="nav-btn" data-target="history-panel">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 2.05 4.95l-1.41 1.41A9 9 0 1 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+                    <span>Histórico</span>
+                </button>
                 <button class="nav-btn" data-target="junk-panel">
                     <svg viewBox="0 0 24 24" class="nav-icon"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                     <span>Lixo do Sistema</span>
@@ -113,6 +117,7 @@
                         <span id="ai-summary-text"></span>
                     </div>
                 </div>
+                <div id="health-alerts" class="health-alerts" aria-live="polite"></div>
                 <div class="dashboard-grid">
                     <div class="overview-card glass">
                         <div class="scanner-circle-container">
@@ -131,6 +136,18 @@
                             </div>
                             <div class="progress-bar-bg" style="height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden;">
                                 <div id="dash-disk-bar" style="height:100%; width:0%; background:var(--accent-gold); transition:width 1s;"></div>
+                            </div>
+                            <div class="disk-goal-row mt-10">
+                                <label for="free-space-goal" class="color-muted">Meta de espaço livre</label>
+                                <select id="free-space-goal" class="select-box select-compact" aria-label="Meta de espaço livre">
+                                    <option value="10">10 GB</option>
+                                    <option value="20">20 GB</option>
+                                    <option value="30">30 GB</option>
+                                    <option value="50">50 GB</option>
+                                    <option value="100">100 GB</option>
+                                    <option value="200">200 GB</option>
+                                </select>
+                                <span id="dash-disk-goal-status" class="disk-goal-status">Verificando…</span>
                             </div>
                         </div>
                     </div>
@@ -171,6 +188,24 @@
                                 <span id="dash-ram-use" class="stat-val">Carregando...</span>
                             </div>
                         </div>
+                    <div class="stat-card glass hover-effect" data-nav="history-panel" role="button" tabindex="0">
+                            <span class="stat-icon">🗂️</span>
+                            <div class="stat-info">
+                                <span class="stat-label">Na Lixeira</span>
+                                <span id="dash-trash-size" class="stat-val">Carregando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="scan-insights" class="insights-grid mt-20" hidden>
+                    <div class="glass insights-card">
+                        <h4>O que mais cresceu desde a última varredura</h4>
+                        <ul id="insights-growth" class="insights-list"></ul>
+                    </div>
+                    <div class="glass insights-card">
+                        <h4>“Dados do Sistema” explicados</h4>
+                        <p class="color-muted insights-note">O macOS soma caches, logs, contêineres, snapshots e ferramentas de desenvolvimento em um número só. O que mais pesa neste Mac:</p>
+                        <ul id="insights-breakdown" class="insights-list"></ul>
                     </div>
                 </div>
             </section>
@@ -196,6 +231,38 @@
                 </div>
             </section>
 
+            <!-- PANEL: HISTORY -->
+            <section id="history-panel" class="panel">
+                <div class="panel-header-actions">
+                    <div>
+                        <h3 class="section-title">Histórico e Desfazer</h3>
+                        <p class="section-subtitle">Tudo o que o HollyOptimizer move fica na Lixeira até você esvaziá-la. Aqui dá para ver cada lote de limpeza e devolver um item ao lugar de origem.</p>
+                    </div>
+                    <button id="btn-refresh-history" class="btn primary">Atualizar</button>
+                </div>
+                <div id="history-trash-warning" class="access-guidance glass mt-20" hidden>
+                    <div>
+                        <strong>Acesso Total ao Disco necessário para restaurar</strong>
+                        <span>O macOS protege a Lixeira. Sem a permissão, o app guarda o histórico mas não consegue devolver itens; conceda o acesso ou use “Colocar de Volta” no Finder.</span>
+                    </div>
+                    <button id="btn-history-open-fda" class="btn warning btn-sm">Abrir Acesso Total ao Disco</button>
+                </div>
+                <div class="history-summary-grid mt-20">
+                    <div class="glass history-summary-card">
+                        <span class="stat-label">Movido para a Lixeira pelo app</span>
+                        <strong id="history-total-moved">—</strong>
+                        <small id="history-total-count" class="color-muted">Nenhuma limpeza registrada ainda.</small>
+                    </div>
+                    <div class="glass history-summary-card">
+                        <span class="stat-label">Espaço livre nas últimas varreduras</span>
+                        <ul id="history-timeline" class="insights-list compact"><li class="empty">Faça uma varredura para começar a linha do tempo.</li></ul>
+                    </div>
+                </div>
+                <div id="history-batches" class="mt-20">
+                    <div class="security-placeholder glass">Abra esta aba depois de uma limpeza para ver o histórico.</div>
+                </div>
+            </section>
+
             <!-- PANEL: JUNK CLEANER -->
             <section id="junk-panel" class="panel">
                 <div class="panel-header-actions">
@@ -216,15 +283,16 @@
                             <thead>
                                 <tr>
                                     <th width="5%"><input type="checkbox" id="junk-select-all" aria-label="Selecionar todas as categorias de lixo"></th>
-                                    <th width="25%" data-sort="name">Categoria <span class="sort-icon">▼</span></th>
-                                    <th width="15%" data-sort="size">Tamanho <span class="sort-icon">▼</span></th>
-                                    <th width="10%">Arquivos</th>
+                                    <th width="22%" data-sort="name">Categoria <span class="sort-icon">▼</span></th>
+                                    <th width="12%" data-sort="size">Tamanho <span class="sort-icon">▼</span></th>
+                                    <th width="13%">Uso</th>
+                                    <th width="8%">Arquivos</th>
                                     <th>Descrição</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td colspan="5" class="empty-state">Clique em 'Escanear Lixo' para iniciar...</td>
+                                    <td colspan="6" class="empty-state">Clique em 'Escanear Lixo' para iniciar...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -272,6 +340,11 @@
                             <button id="btn-refresh-uninstaller" class="btn primary btn-sm">Atualizar</button>
                         </div>
                         <input type="search" id="uninstaller-search" class="search-input mt-15" placeholder="Buscar aplicativo...">
+                        <label class="uninstaller-filter mt-10" for="uninstaller-unused-only">
+                            <input type="checkbox" id="uninstaller-unused-only">
+                            <span>Só apps sem uso há 90+ dias</span>
+                            <span id="uninstaller-unused-count" class="color-muted"></span>
+                        </label>
                         <div class="app-list-scroll mt-15">
                             <ul id="uninstaller-app-list" class="app-list-ul" style="list-style:none; display:flex; flex-direction:column; gap:6px;">
                                 <li class="empty-state">Carregando aplicativos...</li>
@@ -647,6 +720,13 @@
                         <p class="color-muted mt-5" style="font-size:11px; text-align:center; line-height:1.4;">
                             Swap é memória emprestada do SSD. Zero ou poucos MB é o normal;
                             gigabytes constantes indicam que a RAM não está dando conta.
+                        </p>
+
+                        <div id="ram-readiness-status" class="ram-pressure-badge pressure-unknown mt-15">Tarefa pesada: avaliando…</div>
+                        <p class="color-muted mt-5" style="font-size:11px; text-align:center; line-height:1.4;">
+                            Antes de um build, render ou modelo de IA: a folga considera a memória
+                            disponível, o swap e a pressão reportada pelo macOS. “Fechar” pede ao app
+                            para sair como ⌘Q; “Encerrar” força.
                         </p>
 
                         <button id="btn-optimize-ram" class="btn primary w-100 mt-20">Reavaliar Memória e Processos</button>

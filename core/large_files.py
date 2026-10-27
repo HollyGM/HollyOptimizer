@@ -176,4 +176,10 @@ def delete_large_file(path: str) -> tuple[bool, str]:
     if current != expected:
         return False, "Arquivo bloqueado porque foi alterado desde a varredura."
 
-    return move_to_trash(path, expected_identity=expected)
+    return move_to_trash(
+        path,
+        expected_identity=expected,
+        feature="large_files",
+        size_bytes=expected[3],
+        file_count=1,
+    )
