@@ -9,6 +9,13 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 - Empacotamento público assinado e notarizado para distribuição fora da máquina de desenvolvimento.
 
+## [0.8.1] - 2026-10-27
+
+### Corrigido
+
+- **Desinstalar um app instalado por .pkg (Google Docs/Drive/Sheets, Microsoft Office, iWork) falhava com "O macOS bloqueou um item protegido".** Esses bundles pertencem ao root; a API nativa da Lixeira recusa movê-los e o desinstalador deveria repetir a operação com a autenticação de administrador do macOS. A repetição nunca acontecia porque ela procurava os marcadores brutos do erro na mensagem amigável devolvida por `move_to_trash`. A classificação de erro de permissão passou a ser compartilhada (`is_trash_permission_failure`), com teste usando a mensagem real.
+- A varredura mostrava "acesso limitado a alguns locais" quando o único ocorrido era a própria política de segurança preservando um item (pacote, link ou item de outro dono dentro de um cache). Esses casos já aparecem na tabela como "preservado pela política de segurança" e não geram mais o aviso; ele fica reservado para falhas reais de acesso.
+
 ## [0.8.0] - 2026-10-27
 
 ### Adicionado
@@ -112,7 +119,8 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Build nativo para Apple Silicon com suporte opcional a `universal2`.
 - Dependências atualizadas e fixadas para builds reproduzíveis.
 
-[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.8.0...HEAD
+[Não publicado]: https://github.com/HollyGM/HollyOptimizer/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/HollyGM/HollyOptimizer/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/HollyGM/HollyOptimizer/compare/v0.7.1...v0.7.2

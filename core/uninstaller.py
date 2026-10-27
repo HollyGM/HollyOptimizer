@@ -12,6 +12,7 @@ from .utils import (
     get_dir_size,
     is_safe_app_bundle,
     is_safe_scan_candidate,
+    is_trash_permission_failure,
     move_app_to_trash_authorized,
     move_to_trash,
     read_plist,
@@ -405,16 +406,12 @@ def uninstall_app(app_path: str, related_paths: list) -> tuple[bool, list]:
             feature="uninstaller",
             size_bytes=int(registered.get("size_bytes", 0) or 0),
         )
-        permission_failure = any(marker in msg.casefold() for marker in (
-            "code=513",
-            "code=-5000",
-            "permission",
-            "privilege",
-            "access denied",
-            "accessdenied",
-            "not permitted",
-        ))
-        if not ok and permission_failure and resolved_app.startswith("/Applications/"):
+        # Apps installed by a .pkg (Google Drive/Docs, Microsoft Office, iWork)
+        # belong to root: the native Trash API refuses them and the move has
+        # to be retried with the macOS administrator prompt. The friendly
+        # message returned by move_to_trash() is matched by the shared
+        # predicate; parsing its text here is what silently broke the retry.
+        if not ok and is_trash_permission_failure(msg) and resolved_app.startswith("/Applications/"):
             ok, msg = move_app_to_trash_authorized(
                 resolved_app,
                 expected_identity=registered.get("_identity"),

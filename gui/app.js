@@ -135,14 +135,26 @@ async function reportScanIssues(feature) {
             if (accessWarning) accessWarning.hidden = !(report.counts && report.counts.tcc_denied);
         }
         if (report.total > 0) {
-            const accessDenied = report.counts && report.counts.tcc_denied;
-            showToast(
-                accessDenied
-                    ? 'Análise parcial: o macOS bloqueou pastas do seu usuário. Use “Abrir Acesso Total ao Disco” nesta tela.'
-                    : `Varredura concluída com acesso limitado a alguns locais. ${report.messages[0] || ''}`,
-                'warning',
-                8000
-            );
+            const counts = report.counts || {};
+            const accessDenied = counts.tcc_denied;
+            // Items the safety gate itself refused (a link, a document package,
+            // a foreign-owned entry inside a cache) are the policy working as
+            // intended: they are already listed as "preservado pela política"
+            // in the table, so they never read as "limited access".
+            const onlyPolicy = Object.keys(counts).every(code => code === 'policy_blocked');
+            if (accessDenied) {
+                showToast(
+                    'Análise parcial: o macOS bloqueou pastas do seu usuário. Use “Abrir Acesso Total ao Disco” nesta tela.',
+                    'warning',
+                    8000
+                );
+            } else if (!onlyPolicy) {
+                showToast(
+                    `Varredura concluída com acesso limitado a alguns locais. ${report.messages[0] || ''}`,
+                    'warning',
+                    8000
+                );
+            }
         }
         return report;
     } catch (_) {

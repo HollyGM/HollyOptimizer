@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/HollyGM/HollyOptimizer/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/HollyGM/HollyOptimizer/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="CHANGELOG.md"><img alt="Versão 0.8.0, build 20" src="https://img.shields.io/badge/vers%C3%A3o-0.8.0%20%C2%B7%20build%2020-56d28e"></a>
+  <a href="CHANGELOG.md"><img alt="Versão 0.8.1, build 21" src="https://img.shields.io/badge/vers%C3%A3o-0.8.1%20%C2%B7%20build%2021-56d28e"></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-111827?logo=apple">
   <img alt="Apple Silicon" src="https://img.shields.io/badge/Apple%20Silicon-nativo-16a34a?logo=apple">
   <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white">
@@ -24,7 +24,7 @@
 
 O **HollyOptimizer** é um utilitário desktop para diagnosticar o Mac, localizar desperdício de espaço e executar correções seguras. O projeto combina Python, PyWebView, HTML, CSS e JavaScript e foi otimizado para Apple Silicon, sem abandonar a compatibilidade de desenvolvimento com Macs Intel.
 
-> A versão atual é **0.8.0 (build 20)**. O aplicativo foi validado em um MacBook com chip Apple M5. O código é específico do macOS; Windows e Linux poderão receber implementações próprias no futuro, mas ainda não são suportados.
+> A versão atual é **0.8.1 (build 21)**. O aplicativo foi validado em um MacBook com chip Apple M5. O código é específico do macOS; Windows e Linux poderão receber implementações próprias no futuro, mas ainda não são suportados.
 
 ## Recursos
 
@@ -78,7 +78,7 @@ Leia [SECURITY.md](SECURITY.md) antes de relatar uma possível vulnerabilidade.
 
 ## Requisitos
 
-- macOS 12 ou posterior para o código-fonte; o aplicativo compilado pode exigir uma versão mais recente, calculada no build (o build 20 gerado localmente exige macOS 27 ou posterior — veja [Gerar o aplicativo](#gerar-o-aplicativo));
+- macOS 12 ou posterior para o código-fonte; o aplicativo compilado pode exigir uma versão mais recente, calculada no build (o build 21 gerado localmente exige macOS 27 ou posterior — veja [Gerar o aplicativo](#gerar-o-aplicativo));
 - Python 3.12 ou posterior para desenvolvimento;
 - dependências fixadas em [`requirements.txt`](requirements.txt);
 - Node.js para validar e testar a interface (o CI usa a versão 22);
@@ -129,7 +129,7 @@ O bundle será criado em `dist/HollyOptimizer.app`. Sem uma identidade Apple, o 
 
 O script apaga `build/` e `dist/` antes de compilar, compila o auxiliar de Apple Intelligence quando há Apple Silicon e `swiftc`, executa o autoteste dentro do bundle e interrompe o build se a arquitetura gerada divergir do alvo pedido.
 
-O código admite macOS 12 ou posterior, mas o macOS mínimo do aplicativo compilado também depende do Python e das bibliotecas nativas usados no build. O empacotamento calcula esse requisito, mostra o valor no log do PyInstaller e o registra em `LSMinimumSystemVersion`. O build local 20 exige macOS 27 ou posterior, devido ao Python embutido; para atender a versões anteriores do macOS, compile com um Python cujos binários tenham um alvo mínimo menor.
+O código admite macOS 12 ou posterior, mas o macOS mínimo do aplicativo compilado também depende do Python e das bibliotecas nativas usados no build. O empacotamento calcula esse requisito, mostra o valor no log do PyInstaller e o registra em `LSMinimumSystemVersion`. O build local 21 exige macOS 27 ou posterior, devido ao Python embutido; para atender a versões anteriores do macOS, compile com um Python cujos binários tenham um alvo mínimo menor.
 
 ### Distribuição assinada e notarizada
 

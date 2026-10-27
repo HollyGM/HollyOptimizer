@@ -1004,23 +1004,56 @@ class UninstallerSafetyTests(unittest.TestCase):
             }
             uninstaller._RELATED_BY_APP[app_path] = {}
 
-        permission_error = (
+        permission_messages = (
             "Falha ao mover para a Lixeira: NSCocoaErrorDomain Code=513 "
-            "afpAccessDenied: Insufficient access privileges"
+            "afpAccessDenied: Insufficient access privileges",
+            # The message move_to_trash() really returns for a root-owned
+            # bundle (Google Docs, Microsoft Office installed by a .pkg).
+            utils.TRASH_PERMISSION_MESSAGE,
         )
-        with mock.patch.object(uninstaller.os.path, "exists", return_value=True), mock.patch.object(
-            uninstaller, "move_to_trash", return_value=(False, permission_error)
-        ) as native_trash, mock.patch.object(
-            uninstaller,
-            "move_app_to_trash_authorized",
-            return_value=(True, "Movido com autorização"),
-        ) as authorized_trash:
-            ok, logs = uninstaller.uninstall_app(app_path, [])
+        for permission_error in permission_messages:
+            with self.subTest(message=permission_error[:40]), mock.patch.object(
+                uninstaller.os.path, "exists", return_value=True
+            ), mock.patch.object(
+                uninstaller, "move_to_trash", return_value=(False, permission_error)
+            ) as native_trash, mock.patch.object(
+                uninstaller,
+                "move_app_to_trash_authorized",
+                return_value=(True, "Movido com autorização"),
+            ) as authorized_trash:
+                ok, logs = uninstaller.uninstall_app(app_path, [])
 
-        self.assertTrue(ok)
-        self.assertIn("Movido com autorização", logs[0])
-        native_trash.assert_called_once()
-        authorized_trash.assert_called_once_with(app_path, expected_identity=identity)
+            self.assertTrue(ok)
+            self.assertIn("Movido com autorização", logs[0])
+            native_trash.assert_called_once()
+            authorized_trash.assert_called_once_with(app_path, expected_identity=identity)
+
+        # A non-permission failure never escalates to the administrator prompt.
+        with mock.patch.object(uninstaller.os.path, "exists", return_value=True), mock.patch.object(
+            uninstaller, "move_to_trash",
+            return_value=(False, "O macOS não conseguiu mover um item para a Lixeira. Ele foi preservado."),
+        ), mock.patch.object(uninstaller, "move_app_to_trash_authorized") as authorized_trash:
+            ok, logs = uninstaller.uninstall_app(app_path, [])
+        self.assertFalse(ok)
+        authorized_trash.assert_not_called()
+
+    def test_native_trash_permission_error_yields_the_shared_message(self):
+        with tempfile.TemporaryDirectory(dir=os.path.expanduser("~/Downloads")) as temp_dir:
+            item = Path(temp_dir, "root-owned-cache")
+            item.mkdir()
+            foundation = mock.Mock()
+            native = foundation.NSFileManager.defaultManager.return_value.trashItemAtURL_resultingItemURL_error_
+            native.return_value = (
+                False, None,
+                "Error Domain=NSCocoaErrorDomain Code=513 \"“root-owned-cache” couldn’t be moved\" "
+                "UserInfo={NSUnderlyingError=0x1 {Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"}}",
+            )
+            with mock.patch.dict("sys.modules", {"Foundation": foundation}):
+                ok, message = utils.move_to_trash(str(item))
+        self.assertFalse(ok)
+        self.assertEqual(message, utils.TRASH_PERMISSION_MESSAGE)
+        self.assertTrue(utils.is_trash_permission_failure(message))
+        self.assertFalse(utils.is_trash_permission_failure("Caminho não existe."))
 
     def test_leftover_scanner_does_not_follow_symlink_candidates(self):
         with tempfile.TemporaryDirectory() as temp_dir:

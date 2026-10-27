@@ -435,6 +435,38 @@ def is_protected_path(path: str) -> bool:
 FINDER_AUTOMATION_LOCK = threading.RLock()
 SYSTEM_EVENTS_AUTOMATION_LOCK = threading.RLock()
 
+# Message returned by move_to_trash() when macOS refused the move for lack of
+# privileges (root-owned app bundles installed by a .pkg, items of another
+# user). Callers that can retry with administrator authentication compare
+# against this constant instead of parsing the text.
+TRASH_PERMISSION_MESSAGE = (
+    "O macOS bloqueou um item protegido ou pertencente a outro usuário. "
+    "Ele foi preservado e não será removido automaticamente."
+)
+_TRASH_PERMISSION_MARKERS = (
+    "nscocoaerrordomain code=513",
+    "nsosstatuserrordomain code=-5000",
+    "afpaccessdenied",
+    "insufficient access privileges",
+    "permission denied",
+    "operation not permitted",
+    "code=513",
+    "code=-5000",
+    "privilege",
+    "access denied",
+    "not permitted",
+)
+
+
+def is_trash_permission_failure(message: str) -> bool:
+    """Whether a move_to_trash() failure message means 'needs more privileges'."""
+    if not message:
+        return False
+    if message.startswith(TRASH_PERMISSION_MESSAGE):
+        return True
+    lowered = message.casefold()
+    return any(marker in lowered for marker in _TRASH_PERMISSION_MARKERS)
+
 
 def run_command(command: list[str], timeout: int = 120) -> tuple:
     """Executa um comando como argv, sem shell, e retorna código/saídas."""
@@ -678,10 +710,7 @@ def move_to_trash(
                 "operation not permitted",
             )
         ):
-            return False, (
-                "O macOS bloqueou um item protegido ou pertencente a outro usuário. "
-                "Ele foi preservado e não será removido automaticamente."
-            )
+            return False, TRASH_PERMISSION_MESSAGE
         return False, "O macOS não conseguiu mover um item para a Lixeira. Ele foi preservado."
     except Exception as e:
         return False, f"Falha ao mover para a Lixeira nativa: {e!s}"
