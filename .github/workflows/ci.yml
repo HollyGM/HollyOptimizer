@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Mensal: falhas novas nas dependências aparecem sem mudança no código.
+  schedule:
+    - cron: "0 11 1 * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,21 +15,21 @@ permissions:
 jobs:
   test:
     name: Testes no macOS
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 20
 
     steps:
       - name: Obter o código
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configurar Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Configurar Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
 
